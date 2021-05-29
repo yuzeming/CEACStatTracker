@@ -1,5 +1,4 @@
 from typing import List
-from angr.calling_conventions import DEFAULT_CC
 import requests
 import hashlib
 import time
@@ -7,6 +6,9 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from pprint import pprint
 import json
+import logging
+
+l = logging.getLogger(__name__)
 
 DEFAULT_PRED_TYPE = 30600 #6位数字英文
 
@@ -42,9 +44,9 @@ def Predict(img_data, pd_id=PD_ID, passwd=PD_KEY, pred_type=DEFAULT_PRED_TYPE):
     })
     rsp_json = rsp.json()
     if rsp_json["RetCode"] == '0':
-        print("predict succ ret: {} request_id: {} pred: {} err: {}".format( rsp_json["RetCode"], rsp_json["RequestId"], rsp_json["RspData"], rsp_json["ErrMsg"]))
+        l.info("predict succ ret: %s request_id: %s pred: %s err: %s", rsp_json["RetCode"], rsp_json["RequestId"], rsp_json["RspData"], rsp_json["ErrMsg"])
     else:
-        print("predict failed ret: {} err: {}".format( rsp_json["RetCode"], rsp_json["ErrMsg"]))
+        l.error("predict failed ret: %s err: %s", rsp_json["RetCode"], rsp_json["ErrMsg"])
         if rsp_json["RetCode"] == '4003':
             raise "cust_val <= 0 lack of money, please charge immediately"
     return json.loads(rsp_json["RspData"])["result"]
@@ -78,7 +80,6 @@ def query_state(case_no_list):
         data["__EVENTARGUMENT"]=""
         data["__LASTFOCUS"]=""
         resp = s.post(URL,data)
-        open("result.html","w").write(resp.text)
         soup = BeautifulSoup(resp.text, features="html.parser")
         error_text = soup.find(id="ctl00_ContentPlaceHolder1_lblError").text
         if error_text:
