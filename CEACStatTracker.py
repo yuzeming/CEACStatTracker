@@ -20,6 +20,8 @@ PD_KEY = "PQWOAWn57Qc7rEyddEV+jWYRQ5yc6lxc"
 App_ID = "324045"
 App_Key = "7EI9zYymvxlFtiFeR2FkyUb0dWvkEApg"
 
+
+
 s = requests.Session()
 s.headers["User-Agent"]="Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/88.0"
 
@@ -61,7 +63,12 @@ def read_hidden_input(soup: BeautifulSoup):
         ret[x.attrs["name"]] = x.attrs["value"]
     return ret
 
-def query_state(case_no_list):
+def query_ceac_state(case_no_list):
+    # result = {}
+    # for loc, case_no in case_no_list:
+    #     result[case_no] = ('Refused', '25-May-2021', '26-May-2021')
+    # return result
+
     result = {}
     html = s.get(URL).text
     soup = BeautifulSoup(html, features="html.parser")
@@ -96,5 +103,9 @@ def query_state(case_no_list):
     return result
 
 if __name__ == "__main__":
-    rst = query_state([("BEJ","AA00A38G49")])
+    rst = query_ceac_state([
+        ("BEJ","AA00A38G49"),
+    #    ("SHG","AA00899Z9W"),
+        
+        ])
     pprint(rst)

@@ -1,0 +1,31 @@
+{% block content %}
+
+{% with messages = get_flashed_messages() %}
+  {% if messages %}
+    <ul class=flashes>
+    {% for message in messages %}
+      <li>{{ message }}</li>
+    {% endfor %}
+    </ul>
+  {% endif %}
+{% endwith %}
+
+<form  method="POST">
+  <div class="row">
+    <div class="six columns">
+      <label for="case_no">Application No.</label>
+      <input class="u-full-width" placeholder="AA00ABC123" id="case_no" name="case_no" value={{ case_no }}>
+    </div>
+    <div class="six columns">
+      <label for="location">Locations</label>
+      <select class="u-full-width" id="location" name="location">
+        {%for loc in LocationList%}
+            <option value="{{ loc[0] }}" {{ "selected" if loc[0]==location }}>{{ loc[1] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+  <input class="button-primary" type="submit" value="Submit">
+</form>
+
+{% endblock %}

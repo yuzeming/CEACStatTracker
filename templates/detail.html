@@ -1,0 +1,32 @@
+{% block content %}
+
+<p>{{ case.case_no }}</p>
+<p>{{ case.location }}</p>
+{% if case.last_update %}
+last_update
+<p>{{ case.last_update.status }}</p>
+<p>{{ case.last_update.status_date }}</p>
+{% endif %}
+<p>{{ case.created_date }}</p>
+<p>{{ case.expire_date }}</p>
+
+<ul>
+{% for x in record_list %}
+    <li> {{x.status}} {{x.status_date}}</li>
+{% endfor %}
+</ul>
+
+<form method="POST">
+<input type="hidden" name="act" value="renew">
+<input type="submit" value="renew +7 days">
+</form>
+
+<form method="POST">
+<input type="hidden" name="act" value="delete">
+<input type="submit" value="delete" onclick="return confirm('Are you sure?')" >
+</form>
+
+<img src="https://mp.weixin.qq.com/cgi-bin/showqrcode?ticket={{ case.qr_ticket}}">
+
+
+{% endblock %}
