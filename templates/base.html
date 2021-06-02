@@ -1,44 +1,42 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
+<html lang="en-US">
+  <head>
+  <meta charset="UTF-8">
 
-  <!-- Basic Page Needs
-  –––––––––––––––––––––––––––––––––––––––––––––––––– -->
-  <meta charset="utf-8">
-  <title>Your page title here :)</title>
-  <meta name="description" content="">
-  <meta name="author" content="">
+<title>Cayman theme | Cayman is a clean, responsive theme for GitHub Pages.</title>
 
-  <!-- Mobile Specific Metas
-  –––––––––––––––––––––––––––––––––––––––––––––––––– -->
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="preconnect" href="https://fonts.gstatic.com">
+    <link rel="preload" href="https://fonts.googleapis.com/css?family=Open+Sans:400,700&display=swap" as="style" type="text/css" crossorigin>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#157878">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <header class="page-header" role="banner">
+      <h1 class="project-name">Cayman theme</h1>
+      <h2 class="project-tagline">Cayman is a clean, responsive theme for GitHub Pages.</h2>
+    </header>
+    <script src="/static/qrcode.js"></script>
+    <main id="content" class="main-content" role="main">
 
-  <!-- CSS
-  –––––––––––––––––––––––––––––––––––––––––––––––––– -->
-  <link rel="stylesheet" href="/static/normalize.css">
-  <link rel="stylesheet" href="/static/skeleton.css">
+{% with messages = get_flashed_messages() %}
+{% if messages %}
+        <div class="highlight">
+          <ul class=flashes>
+            {% for message in messages %}
+              <li>{{ message }}</li>
+            {% endfor %}
+            </ul>
+        </div>
+    {% endif %}
+    {% endwith %}
 
-  <!-- Favicon
-  –––––––––––––––––––––––––––––––––––––––––––––––––– -->
-  <link rel="icon" type="image/png" href="/static/favicon.png">
-
-</head>
-<body>
-
-  <!-- Primary Page Layout
-  –––––––––––––––––––––––––––––––––––––––––––––––––– -->
-  <div class="container">
-  {% block content %}
-    <div class="row">
-      <div class="one-half column" style="margin-top: 25%">
-        <h4>Basic Page</h4>
-        <p>This index.html page is a placeholder with the CSS, font and favicon. It's just waiting for you to add some content! If you need some help hit up the <a href="http://www.getskeleton.com">Skeleton documentation</a>.</p>
-      </div>
-    </div>
-  {% endblock %}
-  </div>
-
-<!-- End Document
-  –––––––––––––––––––––––––––––––––––––––––––––––––– -->
-</body>
+    {% block content %}
+    {% endblock %}
+      <footer class="site-footer"></footer>
+          <span class="site-footer-owner"><a href="https://github.com/pages-themes/cayman">cayman</a> is maintained by <a href="https://github.com/pages-themes">pages-themes</a>.</span>
+        </footer>
+    </main>
+  </body>
 </html>

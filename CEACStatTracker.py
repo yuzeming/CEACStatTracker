@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, List
 import requests
 import hashlib
 import time
@@ -63,44 +63,37 @@ def read_hidden_input(soup: BeautifulSoup):
         ret[x.attrs["name"]] = x.attrs["value"]
     return ret
 
-def query_ceac_state(case_no_list):
-    # result = {}
-    # for loc, case_no in case_no_list:
-    #     result[case_no] = ('Refused', '25-May-2021', '26-May-2021')
-    # return result
+def query_ceac_state(loc, case_no, prev_soup = None):
+    if prev_soup is None:
+        html = s.get(URL).text
+        soup = BeautifulSoup(html, features="html.parser")
+    else:
+        soup = prev_soup
 
-    result = {}
-    html = s.get(URL).text
-    soup = BeautifulSoup(html, features="html.parser")
-    for loc, case_no in case_no_list:
-        data = read_hidden_input(soup)
-        CaptchaImageUrl = soup.find(id="c_status_ctl00_contentplaceholder1_defaultcaptcha_CaptchaImage").attrs["src"]
-        img_resp = s.get(urljoin(URL,CaptchaImageUrl))
-        data["ctl00_ToolkitScriptManager1_HiddenField"]=";;AjaxControlToolkit, Version=3.5.51116.0, Culture=neutral, PublicKeyToken=28f01b0e84b6d53e:en-US:2a06c7e2-728e-4b15-83d6-9b269fb7261e:de1feab2:f2c8e708:8613aea7:f9cec9bc:3202a5a2:a67c2700:720a52bf:589eaa30:ab09e3fe:87104b7c:be6fb298"
-        data["ctl00$ContentPlaceHolder1$Visa_Application_Type"]="NIV"
-        data["ctl00$ContentPlaceHolder1$Location_Dropdown"]=loc
-        data["ctl00$ContentPlaceHolder1$Visa_Case_Number"]=case_no
-        data["ctl00$ContentPlaceHolder1$Captcha"]=Predict(img_resp.content)
-        data["__EVENTTARGET"]="ctl00$ContentPlaceHolder1$btnSubmit"
-        data["ctl00$ToolkitScriptManager1"]="ctl00$ContentPlaceHolder1$UpdatePanel1|ctl00$ContentPlaceHolder1$btnSubmit"
-        data["LBD_BackWorkaround_c_status_ctl00_contentplaceholder1_defaultcaptcha"]="1"
-        data["__EVENTARGUMENT"]=""
-        data["__LASTFOCUS"]=""
-        resp = s.post(URL,data)
-        soup = BeautifulSoup(resp.text, features="html.parser")
-        error_text = soup.find(id="ctl00_ContentPlaceHolder1_lblError").text
-        if error_text:
-            result[case_no]= error_text
-            continue
-        status = soup.find(id="ctl00_ContentPlaceHolder1_ucApplicationStatusView_lblStatus").text
-        caseno = soup.find(id="ctl00_ContentPlaceHolder1_ucApplicationStatusView_lblCaseNo").text
-        SubmitDate = soup.find(id="ctl00_ContentPlaceHolder1_ucApplicationStatusView_lblSubmitDate").text
-        StatusDate = soup.find(id="ctl00_ContentPlaceHolder1_ucApplicationStatusView_lblStatusDate").text
-
-        assert caseno == case_no
-        result[case_no]= (status,SubmitDate,StatusDate)
-    
-    return result
+    data = read_hidden_input(soup)
+    CaptchaImageUrl = soup.find(id="c_status_ctl00_contentplaceholder1_defaultcaptcha_CaptchaImage").attrs["src"]
+    img_resp = s.get(urljoin(URL,CaptchaImageUrl))
+    data["ctl00_ToolkitScriptManager1_HiddenField"]=";;AjaxControlToolkit, Version=3.5.51116.0, Culture=neutral, PublicKeyToken=28f01b0e84b6d53e:en-US:2a06c7e2-728e-4b15-83d6-9b269fb7261e:de1feab2:f2c8e708:8613aea7:f9cec9bc:3202a5a2:a67c2700:720a52bf:589eaa30:ab09e3fe:87104b7c:be6fb298"
+    data["ctl00$ContentPlaceHolder1$Visa_Application_Type"]="NIV"
+    data["ctl00$ContentPlaceHolder1$Location_Dropdown"]=loc
+    data["ctl00$ContentPlaceHolder1$Visa_Case_Number"]=case_no
+    data["ctl00$ContentPlaceHolder1$Captcha"]=Predict(img_resp.content)
+    data["__EVENTTARGET"]="ctl00$ContentPlaceHolder1$btnSubmit"
+    data["ctl00$ToolkitScriptManager1"]="ctl00$ContentPlaceHolder1$UpdatePanel1|ctl00$ContentPlaceHolder1$btnSubmit"
+    data["LBD_BackWorkaround_c_status_ctl00_contentplaceholder1_defaultcaptcha"]="1"
+    data["__EVENTARGUMENT"]=""
+    data["__LASTFOCUS"]=""
+    resp = s.post(URL,data)
+    soup = BeautifulSoup(resp.text, features="html.parser")
+    error_text = soup.find(id="ctl00_ContentPlaceHolder1_lblError").text
+    if error_text:
+        return error_text, None
+    status = soup.find(id="ctl00_ContentPlaceHolder1_ucApplicationStatusView_lblStatus").text
+    caseno = soup.find(id="ctl00_ContentPlaceHolder1_ucApplicationStatusView_lblCaseNo").text
+    SubmitDate = soup.find(id="ctl00_ContentPlaceHolder1_ucApplicationStatusView_lblSubmitDate").text
+    StatusDate = soup.find(id="ctl00_ContentPlaceHolder1_ucApplicationStatusView_lblStatusDate").text
+    assert caseno == case_no    
+    return (status,SubmitDate,StatusDate), soup
 
 if __name__ == "__main__":
     rst = query_ceac_state([

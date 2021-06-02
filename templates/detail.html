@@ -1,3 +1,4 @@
+{% extends "base.html" %}
 {% block content %}
 
 <p>{{ case.case_no }}</p>
@@ -26,7 +27,11 @@ last_update
 <input type="submit" value="delete" onclick="return confirm('Are you sure?')" >
 </form>
 
-<img src="https://mp.weixin.qq.com/cgi-bin/showqrcode?ticket={{ case.qr_ticket}}">
+<p>{{case.qr_code_url}}</p>
 
+<div id="qrcode"></div>
+<script type="text/javascript">
+new QRCode(document.getElementById("qrcode"), "{{case.qr_code_url}}");
+</script>
 
 {% endblock %}

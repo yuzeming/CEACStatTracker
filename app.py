@@ -1,18 +1,15 @@
 import datetime
+import logging
+from typing import List
 from flask import Flask, request, flash, abort
 from flask.templating import render_template
 from flask_mongoengine import MongoEngine
-from flask_mongoengine.wtf import model_form
-from mongoengine.fields import *
-from mongoengine import Document
+from flask_crontab import Crontab
 from mongoengine.queryset.base import CASCADE
-from mongoengine.queryset.transform import update
 from werkzeug.utils import redirect
-from wtforms import Form, SelectField, TextField
-from wtforms.fields.core import Label
 from .location_list import LocationDict, LocationList
 from .CEACStatTracker import query_ceac_state
-from .Wechat import get_qr_ticket, config, check_wx_signature, xmltodict
+from .Wechat import get_qr_code_url, config as wx_config, check_wx_signature, xmltodict, wechat_msg_push
 
 app = Flask(__name__)
 app.secret_key = "eawfopawjfoawe"
@@ -20,10 +17,10 @@ app.config['MONGODB_SETTINGS'] = {
     'host': 'mongodb://localhost/CEACStateTracker',
 }
 
-db = MongoEngine(app)
+HOST = "track.yuzm.me/detail/"
 
-def PushToUser():
-    pass
+db = MongoEngine(app)
+crontab = Crontab(app)
 
 def parse_date(date_string):
     return datetime.datetime.strptime(date_string,"%d-%b-%Y")
@@ -35,7 +32,7 @@ class Case(db.Document):
     created_date = db.DateField(format)
 
     push_channel = db.StringField(max_length=50)
-    qr_ticket = db.StringField(max_length=100)
+    qr_code_url = db.StringField(max_length=100)
     expire_date = db.DateTimeField()
 
     def updateRecord(self,result):
@@ -52,18 +49,25 @@ class Case(db.Document):
             self.expire_date = datetime.datetime.utcnow()
         self.save()
         if self.push_channel:
-            PushToUser(self.push_channel, self.case_no, status, status_date)
+            self.push_msg()
 
     def renew(self, days=7):
         if self.last_update and self.last_update.status == "Issued":
             return
-        #if not self.qr_ticket or datetime.datetime.utcnow()-self.expire_date > datetime.timedelta(days=1):
-        self.qr_ticket = get_qr_ticket(str(self.id))
+        #if not self.qr_code_url or datetime.datetime.utcnow()-self.expire_date > datetime.timedelta(days=1):
+        self.qr_code_url = get_qr_code_url(str(self.id))
         self.expire_date = datetime.datetime.utcnow() + datetime.timedelta(days=days)
         self.save()
 
+    def push_msg(self, msg=None):
+        if msg is None:
+            msg = "Welcome, Update of your case will be pushed here."
+            if self.last_update:
+                msg = "State: {}\nLast update:{}".format(self.last_update.status, self.last_update.status_date.strftime("%x"))
+        wechat_msg_push(self.push_channel, content=msg, url=HOST+str(self.id))
+
     @staticmethod
-    def bind(case_id,wx_userid):
+    def bind(case_id, wx_userid):
         case = Case.objects(id=case_id).first()
         if case:
             case.push_channel = wx_userid
@@ -75,6 +79,30 @@ class Record(db.Document):
     status_date = db.DateField()
     status = db.StringField()
 
+
+@crontab.job(hour="2,8,14,20", minute="32")
+def crontab_task():
+    logging.basicConfig(filename='crontab_task.log', level=logging.INFO)
+    l = logging.getLogger("crontab_task")
+
+    case_list : List[Case] = Case.objects(expire_date__gte=datetime.datetime.utcnow())
+    
+    l.info("Task start %d", case_list.count())
+
+    soup = None
+    for case in case_list:
+        try:
+            result, soup = query_ceac_state(case.location, case.case_no, soup)
+        except:
+            l.error("Error %s-%s",case.location, case.case_no, exc_info=True)
+            soup = None
+            continue
+        if isinstance(result, str):
+            l.warn("Warn %s-%s: %s",case.location, case.case_no, result)
+        else:
+            l.info("Succ %s-%s: %s",case.location, case.case_no, result)
+            case.updateRecord(result)
+    
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -90,7 +118,7 @@ def index():
         if not location or location not in LocationDict.keys() :
             flash("invaild location")
             return redirect("/")
-        result = query_ceac_state([(location,case_no)])[case_no]
+        result, _ = query_ceac_state(location,case_no)
         if isinstance(result,str):
             flash(result)
             return render_template("index.html", case_no=case_no, location=location, LocationList=LocationList)
@@ -118,27 +146,17 @@ def detail_page(case_id):
     record_list = Record.objects(case=case).order_by('-seem')
     return render_template("detail.html", case=case, record_list=record_list, location_str = LocationDict[case.location])
 
-    
-
-@app.route("/endpoint", methods=["GET"])
+@app.route('/endpoint', methods=["GET","POST"])
 def wechat_point():
     if not check_wx_signature(
         request.args.get("signature"), 
         request.args.get("timestamp"), 
         request.args.get("nonce"),
-        config["serverToken"]):
+        wx_config["serverToken"]):
         return abort(500)
-    return request.args.get("echostr")
+    if request.method == "GET":
+        return request.args.get("echostr")
 
-
-@app.route('/endpoint/', methods=["POST"])
-def wechat_point_post():
-    if not check_wx_signature(
-        request.args.get("signature"), 
-        request.args.get("timestamp"), 
-        request.args.get("nonce"),
-        config["serverToken"]):
-        return abort(500)
     req = xmltodict(request.data)
     EventKey = ""
     if req["MsgType"] == "event" and req["Event"] == "subscribe" and "EventKey" in req:
@@ -146,6 +164,7 @@ def wechat_point_post():
     if req["MsgType"] == "event" and req["Event"] == "SCAN":
         EventKey = req["EventKey"]  #qrscene_
 
-    Case.bindWX(EventKey, req["FromUserName"])
+    if EventKey:
+        Case.bind(EventKey, req["FromUserName"])
 
     return ""

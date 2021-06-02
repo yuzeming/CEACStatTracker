@@ -5,14 +5,13 @@ import os
 import yaml
 from hashlib import sha1
 
-WX_HOST = "http://mes.howvi.cn"
-
-
 config_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "config.yaml")
 if os.path.exists(config_path):
     config = yaml.safe_load(open("config.yaml"))
 
 def check_wx_signature(signature, timestamp, nonce, token):
+    if not signature or not timestamp or not nonce or not token:
+        return False
     if datetime.timestamp(datetime.now()) - float(timestamp) > 30:
         return False
     args = [token, timestamp, nonce]
@@ -40,19 +39,19 @@ def get_access_token():
 
     return config["accessToken"]
 
-def msg_push(touser, tempID, content):
+def wechat_msg_push(touser, tempID=config["tempID"], content="TEST", url=""):
     url = " https://api.weixin.qq.com/cgi-bin/message/template/send?access_token={ACCESS_TOKEN}".format(
         ACCESS_TOKEN=get_access_token())
     data = {"CONTENT": {"value": content}}
-    post_json = {"touser": touser, "template_id": tempID, "data": data}
+    post_json = {"touser": touser, "template_id": tempID, "data": data, "url": url}
     requests.post(url=url, json=post_json)
 
-def get_qr_ticket(scene_str):
+def get_qr_code_url(scene_str):
     url = " https://api.weixin.qq.com/cgi-bin/qrcode/create?access_token={ACCESS_TOKEN}".format(
         ACCESS_TOKEN=get_access_token())
     post_json = {"expire_seconds": 2592000, "action_name": "QR_STR_SCENE", "action_info": {"scene": {"scene_str": scene_str}} }
     ret = requests.post(url=url, json=post_json).json()
     if "errcode" in ret:
         raise ret["errmsg"]
-    return ret["ticket"]
+    return ret["url"]
 
