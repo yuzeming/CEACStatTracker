@@ -1,7 +1,7 @@
 import datetime
 import logging
 from typing import List
-from flask import Flask, request, flash, abort
+from flask import Flask, request, flash, abort, has_request_context
 from flask.templating import render_template
 from flask.wrappers import Response
 from flask_mongoengine import MongoEngine
@@ -17,6 +17,28 @@ app.secret_key = "eawfopawjfoawe"
 app.config['MONGODB_SETTINGS'] = {
     'host': 'mongodb://localhost/CEACStateTracker',
 }
+
+class RequestFormatter(logging.Formatter):
+    def format(self, record):
+        if has_request_context():
+            record.url = request.url
+            if request.method == "POST" and request.url == "/":
+                record.case = request.form.get("case_no","NONE")+" - "+request.form.get("location","NONE")
+            else:
+                record.case = None
+        else:
+            record.url = None
+            record.case = None
+        return super().format(record)
+
+formatter = RequestFormatter(
+    '[%(asctime)s] %(case)s %(url)s %(levelname)s in %(module)s: %(message)s'
+)
+
+file_logger = logging.FileHandler('flask-http.log')
+file_logger.setFormatter(formatter)
+file_logger.setLevel(logging.INFO)
+app.logger.addHandler(file_logger)
 
 HOST = "https://track.yuzm.me/detail/"
 
@@ -86,7 +108,11 @@ class Record(db.Document):
 def crontab_task():
     l = logging.getLogger("crontab_task.log")
     l.setLevel(logging.INFO)
-    l.addHandler(logging.FileHandler('crontab_task.log'))
+    fh = logging.FileHandler('crontab_task.log')
+    fh.setFormatter(logging.Formatter(
+        '[%(asctime)s] %(levelname)s in %(module)s: %(message)s'
+    ))
+    l.addHandler(fh)
 
     case_list : List[Case] = Case.objects(expire_date__gte=datetime.datetime.today())
     l.info("Task start %d", case_list.count())
@@ -105,10 +131,10 @@ def crontab_task():
             l.info("Succ %s-%s: %s",case.location, case.case_no, result)
             case.updateRecord(result)
     
-# @app.route("/task")
-# def crontab_task_debug():
-#     crontab_task()
-#     return "ok"
+@app.route("/task-aaa1222")
+def crontab_task_debug():
+    crontab_task()
+    return "ok"
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -124,6 +150,7 @@ def index():
         if not location or location not in LocationDict.keys() :
             flash("Invaild location")
             return render_template("index.html", case_no=case_no, location=location, LocationList=LocationList)
+
         result, _ = query_ceac_state(location,case_no)
         if isinstance(result,str):
             flash(result)
@@ -174,3 +201,6 @@ def wechat_point():
         Case.bind(EventKey, req["FromUserName"])
 
     return ""
+
+if __name__ == '__main__':
+    app.run()

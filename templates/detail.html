@@ -25,11 +25,11 @@
 
 <form method="POST">
 <input type="hidden" name="act" value="delete">
-<input type="submit" value="Delete Case" onclick="return confirm('Are you sure?')" >
+<input type="submit" value="Delete my case" onclick="return confirm('Are you sure?')" >
 </form>
 
 {% if case.expire_date %}
-<h4>Scan this QR Code by WeChat and follow my account to receive notify</h4>
+<h4>Scan this QR Code by WeChat and follow my account to receive notifications.</h4>
 <div id="qrcode"></div>
 <script type="text/javascript">
 new QRCode(document.getElementById("qrcode"), "{{case.qr_code_url}}");
