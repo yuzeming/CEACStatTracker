@@ -2,21 +2,19 @@
 {% block content %}
 
 <form  method="POST">
-  <div class="row">
-    <div class="six columns">
-      <label for="case_no">Application No.</label>
-      <input class="u-full-width" placeholder="AA00ABC123" id="case_no" name="case_no" value={{ case_no }}>
-    </div>
-    <div class="six columns">
-      <label for="location">Locations</label>
-      <select class="u-full-width" id="location" name="location">
+
+      <h3> <label for="case_no">Application No.</label> </h3>
+      <input placeholder="AA00ABC123" id="case_no" name="case_no" value="{{ case_no }}" required=required>
+
+      <h3> <label for="location">Locations (required for new case)</label> </h3>
+      <select id="location" name="location">
         {%for loc in LocationList%}
-            <option value="{{ loc[0] }}" {{ "selected" if loc[0]==location }}>{{ loc[1] }}</option>
+            <option value="{{ loc[0] }}" {%if loc[0]==location %} selected {%endif%}>{{ loc[1] }}</option>
         {% endfor %}
       </select>
-    </div>
-  </div>
-  <input class="button-primary" type="submit" value="Submit">
+      <h3>It will take about 3 seconds, don't re-click.</h3>
+      <input type="submit" value="Submit">
+
 </form>
 
 {% endblock %}

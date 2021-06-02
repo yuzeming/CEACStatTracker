@@ -39,11 +39,11 @@ def get_access_token():
 
     return config["accessToken"]
 
-def wechat_msg_push(touser, tempID=config["tempID"], content="TEST", url=""):
-    url = " https://api.weixin.qq.com/cgi-bin/message/template/send?access_token={ACCESS_TOKEN}".format(
+def wechat_msg_push(touser, tempID=config["tempID"], content="TEST", msg_url=""):
+    url = "https://api.weixin.qq.com/cgi-bin/message/template/send?access_token={ACCESS_TOKEN}".format(
         ACCESS_TOKEN=get_access_token())
     data = {"CONTENT": {"value": content}}
-    post_json = {"touser": touser, "template_id": tempID, "data": data, "url": url}
+    post_json = {"touser": touser, "template_id": tempID, "data": data, "url": msg_url}
     requests.post(url=url, json=post_json)
 
 def get_qr_code_url(scene_str):

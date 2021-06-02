@@ -3,6 +3,7 @@ import logging
 from typing import List
 from flask import Flask, request, flash, abort
 from flask.templating import render_template
+from flask.wrappers import Response
 from flask_mongoengine import MongoEngine
 from flask_crontab import Crontab
 from mongoengine.queryset.base import CASCADE
@@ -17,13 +18,13 @@ app.config['MONGODB_SETTINGS'] = {
     'host': 'mongodb://localhost/CEACStateTracker',
 }
 
-HOST = "track.yuzm.me/detail/"
+HOST = "https://track.yuzm.me/detail/"
 
 db = MongoEngine(app)
 crontab = Crontab(app)
 
 def parse_date(date_string):
-    return datetime.datetime.strptime(date_string,"%d-%b-%Y")
+    return datetime.datetime.strptime(date_string,"%d-%b-%Y").date()
 
 class Case(db.Document):
     case_no = db.StringField(max_length=20, unique=True)
@@ -33,7 +34,7 @@ class Case(db.Document):
 
     push_channel = db.StringField(max_length=50)
     qr_code_url = db.StringField(max_length=100)
-    expire_date = db.DateTimeField()
+    expire_date = db.DateField(null=True)
 
     def updateRecord(self,result):
         status, _, status_date = result
@@ -46,33 +47,34 @@ class Case(db.Document):
         self.last_update = new_record
         if status == "Issued":
             # mark as expired now
-            self.expire_date = datetime.datetime.utcnow()
+            self.expire_date = None
         self.save()
         if self.push_channel:
             self.push_msg()
 
-    def renew(self, days=7):
+    def renew(self, days=14):
         if self.last_update and self.last_update.status == "Issued":
             return
         #if not self.qr_code_url or datetime.datetime.utcnow()-self.expire_date > datetime.timedelta(days=1):
         self.qr_code_url = get_qr_code_url(str(self.id))
-        self.expire_date = datetime.datetime.utcnow() + datetime.timedelta(days=days)
+        self.expire_date = datetime.datetime.today() + datetime.timedelta(days=days)
         self.save()
 
     def push_msg(self, msg=None):
         if msg is None:
             msg = "Welcome, Update of your case will be pushed here."
             if self.last_update:
-                msg = "State: {}\nLast update:{}".format(self.last_update.status, self.last_update.status_date.strftime("%x"))
-        wechat_msg_push(self.push_channel, content=msg, url=HOST+str(self.id))
+                msg = "Case No: {}\nState: {}\nLast Update: {}".format(self.case_no, self.last_update.status, self.last_update.status_date.strftime("%x"))
+        wechat_msg_push(self.push_channel, content=msg, msg_url=HOST+str(self.id))
 
     @staticmethod
     def bind(case_id, wx_userid):
         case = Case.objects(id=case_id).first()
-        if case:
-            case.push_channel = wx_userid
-            case.save()
-            case.push_msg()
+        if not case:
+            return 
+        case.push_channel = wx_userid
+        case.save()
+        case.push_msg()
 
 class Record(db.Document):
     case = db.ReferenceField(Case, reverse_delete_rule=CASCADE)
@@ -82,11 +84,11 @@ class Record(db.Document):
 
 @crontab.job(hour="2,8,14,20", minute="32")
 def crontab_task():
-    logging.basicConfig(filename='crontab_task.log', level=logging.INFO)
-    l = logging.getLogger("crontab_task")
+    l = logging.getLogger("crontab_task.log")
+    l.setLevel(logging.INFO)
+    l.addHandler(logging.FileHandler('crontab_task.log'))
 
-    case_list : List[Case] = Case.objects(expire_date__gte=datetime.datetime.utcnow())
-    
+    case_list : List[Case] = Case.objects(expire_date__gte=datetime.datetime.today())
     l.info("Task start %d", case_list.count())
 
     soup = None
@@ -103,6 +105,10 @@ def crontab_task():
             l.info("Succ %s-%s: %s",case.location, case.case_no, result)
             case.updateRecord(result)
     
+# @app.route("/task")
+# def crontab_task_debug():
+#     crontab_task()
+#     return "ok"
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -110,14 +116,14 @@ def index():
         case_no = request.form.get("case_no",None)
         location = request.form.get("location",None)
         if not case_no:
-            flash("invaild case no")
-            return redirect("/")
+            flash("Invaild case no")
+            return render_template("index.html", case_no=case_no, location=location, LocationList=LocationList)
         if Case.objects(case_no=case_no).count() == 1:
             case = Case.objects(case_no=case_no).first()
             return redirect("detail/"+str(case.id))
         if not location or location not in LocationDict.keys() :
-            flash("invaild location")
-            return redirect("/")
+            flash("Invaild location")
+            return render_template("index.html", case_no=case_no, location=location, LocationList=LocationList)
         result, _ = query_ceac_state(location,case_no)
         if isinstance(result,str):
             flash(result)

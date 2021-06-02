@@ -1,37 +1,38 @@
 {% extends "base.html" %}
+{% block head %}
+<h1 class="project-name">{{ case.last_update.status }}</h1>
+<h2 class="project-tagline"><b>Case Last Updated: </b>{{ case.last_update.status_date }}<br><b>Case No: </b> {{ case.case_no }}</p></h2>
+{% endblock %}
 {% block content %}
-
-<p>{{ case.case_no }}</p>
-<p>{{ case.location }}</p>
-{% if case.last_update %}
-last_update
-<p>{{ case.last_update.status }}</p>
-<p>{{ case.last_update.status_date }}</p>
-{% endif %}
-<p>{{ case.created_date }}</p>
+<h2>Case Info</h2>
+<p><b>Case No: </b> {{ case.case_no }}<br>
+<b>Location: </b>{{location_str}} ({{ case.location }})<br>
+<b>Case Created: </b>{{ case.created_date }}</p>
+{% if case.expire_date %}
+<h2>Auto Refresh Expire</h2>
 <p>{{ case.expire_date }}</p>
-
+<form method="POST">
+    <input type="hidden" name="act" value="renew">
+    <input type="submit" value="Renew +14 days">
+</form>
+{% endif %}
+<h2>History</h2>
 <ul>
 {% for x in record_list %}
-    <li> {{x.status}} {{x.status_date}}</li>
+    <li> {{x.status}} / {{x.status_date}}</li>
 {% endfor %}
 </ul>
 
 <form method="POST">
-<input type="hidden" name="act" value="renew">
-<input type="submit" value="renew +7 days">
-</form>
-
-<form method="POST">
 <input type="hidden" name="act" value="delete">
-<input type="submit" value="delete" onclick="return confirm('Are you sure?')" >
+<input type="submit" value="Delete Case" onclick="return confirm('Are you sure?')" >
 </form>
 
-<p>{{case.qr_code_url}}</p>
-
+{% if case.expire_date %}
+<h4>Scan this QR Code by WeChat and follow my account to receive notify</h4>
 <div id="qrcode"></div>
 <script type="text/javascript">
 new QRCode(document.getElementById("qrcode"), "{{case.qr_code_url}}");
 </script>
-
+{% endif %}
 {% endblock %}

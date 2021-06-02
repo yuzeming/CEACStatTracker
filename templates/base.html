@@ -3,7 +3,7 @@
   <head>
   <meta charset="UTF-8">
 
-<title>Cayman theme | Cayman is a clean, responsive theme for GitHub Pages.</title>
+<title>CEAC Stat Tracker </title>
 
     <link rel="preconnect" href="https://fonts.gstatic.com">
     <link rel="preload" href="https://fonts.googleapis.com/css?family=Open+Sans:400,700&display=swap" as="style" type="text/css" crossorigin>
@@ -13,11 +13,14 @@
     <link rel="stylesheet" href="/static/style.css">
   </head>
   <body>
-    <header class="page-header" role="banner">
-      <h1 class="project-name">Cayman theme</h1>
-      <h2 class="project-tagline">Cayman is a clean, responsive theme for GitHub Pages.</h2>
-    </header>
     <script src="/static/qrcode.js"></script>
+    <header class="page-header" role="banner">
+      {% block head %}
+      <h1 class="project-name"> CEAC Stat Tracker</h1>
+      <h2 class="project-tagline">Automatically check your Visa case every 6 hours and push updates to your wechat</h2>
+      {% endblock %}
+    </header>
+    
     <main id="content" class="main-content" role="main">
 
 {% with messages = get_flashed_messages() %}

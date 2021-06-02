@@ -17,10 +17,6 @@ URL = "https://ceac.state.gov/CEACStatTracker/Status.aspx?App=NIV"
 
 PD_ID = "124045"
 PD_KEY = "PQWOAWn57Qc7rEyddEV+jWYRQ5yc6lxc"
-App_ID = "324045"
-App_Key = "7EI9zYymvxlFtiFeR2FkyUb0dWvkEApg"
-
-
 
 s = requests.Session()
 s.headers["User-Agent"]="Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/88.0"
@@ -32,10 +28,8 @@ def Predict(img_data, pd_id=PD_ID, passwd=PD_KEY, pred_type=DEFAULT_PRED_TYPE):
     tm = str( int(time.time()))
     param = {
         "user_id": pd_id,
-        "app_id": App_ID,
         "timestamp": tm,
         "sign": CalcSign(tm, pd_id, passwd),
-        "asign": CalcSign(tm, App_ID, App_Key),
         "predict_type": pred_type,
         "up_type": "mt"
     }
