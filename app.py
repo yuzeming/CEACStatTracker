@@ -7,10 +7,11 @@ from flask.wrappers import Response
 from flask_mongoengine import MongoEngine
 from flask_crontab import Crontab
 from mongoengine.queryset.base import CASCADE
+from requests.sessions import default_hooks
 from werkzeug.utils import redirect
 from .location_list import LocationDict, LocationList
-from .CEACStatTracker import query_ceac_state
 from .Wechat import get_qr_code_url, config as wx_config, check_wx_signature, xmltodict, wechat_msg_push
+from .CEACStatTracker import get_data,ERR_CAPTCHA, query_ceac_state, query_ceac_state_safe
 
 app = Flask(__name__)
 app.secret_key = "eawfopawjfoawe"
@@ -18,27 +19,6 @@ app.config['MONGODB_SETTINGS'] = {
     'host': 'mongodb://localhost/CEACStateTracker',
 }
 
-class RequestFormatter(logging.Formatter):
-    def format(self, record):
-        if has_request_context():
-            record.url = request.url
-            if request.method == "POST" and request.url == "/":
-                record.case = request.form.get("case_no","NONE")+" - "+request.form.get("location","NONE")
-            else:
-                record.case = None
-        else:
-            record.url = None
-            record.case = None
-        return super().format(record)
-
-formatter = RequestFormatter(
-    '[%(asctime)s] %(case)s %(url)s %(levelname)s in %(module)s: %(message)s'
-)
-
-file_logger = logging.FileHandler('flask-http.log')
-file_logger.setFormatter(formatter)
-file_logger.setLevel(logging.INFO)
-app.logger.addHandler(file_logger)
 
 HOST = "https://track.yuzm.me/detail/"
 
@@ -53,18 +33,25 @@ class Case(db.Document):
     location = db.StringField(max_length=5, choice=LocationList)
     last_update = db.ReferenceField("Record")
     created_date = db.DateField(format)
+    last_seem = db.DateTimeField(default=datetime.datetime.now)
 
     push_channel = db.StringField(max_length=50)
     qr_code_url = db.StringField(max_length=100)
     expire_date = db.DateField(null=True)
 
     def updateRecord(self,result):
-        status, _, status_date = result
+        self.last_seem = datetime.datetime.now()
+        self.save()
+
+        status, _, status_date, message = result
         status_date = parse_date(status_date)
-        if self.last_update != None and self.last_update.status_date == status_date and self.last_update.status == status:
+        if self.last_update != None and \
+            self.last_update.status_date == status_date and \
+            self.last_update.status == status and \
+            self.last_update.message == message:
             # no update needed
             return
-        new_record = Record(case=self, status_date=status_date, status=status)
+        new_record = Record(case=self, status_date=status_date, status=status, message=message)
         new_record.save()
         self.last_update = new_record
         if status == "Issued":
@@ -78,8 +65,8 @@ class Case(db.Document):
         if self.last_update and self.last_update.status == "Issued":
             return
         #if not self.qr_code_url or datetime.datetime.utcnow()-self.expire_date > datetime.timedelta(days=1):
+        self.expire_date = (datetime.datetime.today() + datetime.timedelta(days=days)).date()
         self.qr_code_url = get_qr_code_url(str(self.id))
-        self.expire_date = datetime.datetime.today() + datetime.timedelta(days=days)
         self.save()
 
     def push_msg(self, msg=None):
@@ -102,33 +89,23 @@ class Record(db.Document):
     case = db.ReferenceField(Case, reverse_delete_rule=CASCADE)
     status_date = db.DateField()
     status = db.StringField()
+    message = db.StringField()
 
-
-@crontab.job(hour="2,8,14,20", minute="32")
+@crontab.job(hour="14", minute="32")
 def crontab_task():
-    l = logging.getLogger("crontab_task.log")
-    l.setLevel(logging.INFO)
-    fh = logging.FileHandler('crontab_task.log')
-    fh.setFormatter(logging.Formatter(
-        '[%(asctime)s] %(levelname)s in %(module)s: %(message)s'
-    ))
-    l.addHandler(fh)
-
     case_list : List[Case] = Case.objects(expire_date__gte=datetime.datetime.today())
-    l.info("Task start %d", case_list.count())
-
     soup = None
     for case in case_list:
         try:
-            result, soup = query_ceac_state(case.location, case.case_no, soup)
+            for _ in range(10):
+                data = get_data(soup)
+                result, soup = query_ceac_state_safe(case.location, case.case_no, data)
+                if result != ERR_CAPTCHA:
+                    break
         except:
-            l.error("Error %s-%s",case.location, case.case_no, exc_info=True)
             soup = None
             continue
-        if isinstance(result, str):
-            l.warn("Warn %s-%s: %s",case.location, case.case_no, result)
-        else:
-            l.info("Succ %s-%s: %s",case.location, case.case_no, result)
+        if isinstance(result, tuple):
             case.updateRecord(result)
     
 @app.route("/task-aaa1222")
@@ -150,8 +127,7 @@ def index():
         if not location or location not in LocationDict.keys() :
             flash("Invaild location")
             return render_template("index.html", case_no=case_no, location=location, LocationList=LocationList)
-
-        result, _ = query_ceac_state(location,case_no)
+        result = query_ceac_state_safe(location,case_no)
         if isinstance(result,str):
             flash(result)
             return render_template("index.html", case_no=case_no, location=location, LocationList=LocationList)
@@ -176,6 +152,12 @@ def detail_page(case_id):
         if act == "renew":
             flash("Expire +7 days")
             case.renew()
+        if act == "refresh":
+            result = query_ceac_state_safe(case.location,case.case_no)
+            if isinstance(result,str):
+                flash(result)
+            else:
+                case.updateRecord(result)
     record_list = Record.objects(case=case).order_by('-seem')
     return render_template("detail.html", case=case, record_list=record_list, location_str = LocationDict[case.location])
 

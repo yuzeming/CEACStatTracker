@@ -7,7 +7,9 @@
 <h2>Case Info</h2>
 <p><b>Case No: </b> {{ case.case_no }}<br>
 <b>Location: </b>{{location_str}} ({{ case.location }})<br>
-<b>Case Created: </b>{{ case.created_date }}</p>
+<b>Case Created: </b>{{ case.created_date }}<br>
+<b>Case Last Seem: </b>{{ case.last_seem }}</p>
+
 {% if case.expire_date %}
 <h2>Auto Refresh Expire</h2>
 <p>{{ case.expire_date }}</p>
@@ -15,11 +17,18 @@
     <input type="hidden" name="act" value="renew">
     <input type="submit" value="Renew +14 days">
 </form>
+
+<form method="POST">
+    <input type="hidden" name="act" value="refresh">
+    <input type="submit" value="Refresh now">
+</form>
+
 {% endif %}
 <h2>History</h2>
 <ul>
 {% for x in record_list %}
-    <li> {{x.status}} / {{x.status_date}}</li>
+    <li>{{x.status}} / {{x.status_date}}</li>
+    <pre class="highlight" style="white-space: pre-wrap; word-wrap:break-word;">{{x.message}}</pre>
 {% endfor %}
 </ul>
 
