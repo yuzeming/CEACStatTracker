@@ -15,9 +15,9 @@
 <p>{{ case.expire_date }}</p>
 <form method="POST">
     <input type="hidden" name="act" value="renew">
-    <input type="submit" value="Renew +14 days">
+    <input type="submit" value="Renew +30 days">
 </form>
-
+<br>
 <form method="POST">
     <input type="hidden" name="act" value="refresh">
     <input type="submit" value="Refresh now">
@@ -41,7 +41,7 @@
 <h4>Scan this QR Code by WeChat and follow my account to receive notifications.</h4>
 <div id="qrcode"></div>
 <script type="text/javascript">
-new QRCode(document.getElementById("qrcode"), "{{case.qr_code_url}}");
+new QRCode(document.getElementById("qrcode"), "{{case.get_qr_code_url()}}");
 </script>
 {% endif %}
 {% endblock %}

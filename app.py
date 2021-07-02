@@ -10,7 +10,7 @@ from mongoengine.queryset.base import CASCADE
 from requests.sessions import default_hooks
 from werkzeug.utils import redirect
 from .location_list import LocationDict, LocationList
-from .Wechat import get_qr_code_url, config as wx_config, check_wx_signature, xmltodict, wechat_msg_push
+from .wechat import get_qr_code_url, config as wx_config, check_wx_signature, xmltodict, wechat_msg_push
 from .CEACStatTracker import get_data,ERR_CAPTCHA, query_ceac_state, query_ceac_state_safe
 
 app = Flask(__name__)
@@ -18,7 +18,6 @@ app.secret_key = "eawfopawjfoawe"
 app.config['MONGODB_SETTINGS'] = {
     'host': 'mongodb://localhost/CEACStateTracker',
 }
-
 
 HOST = "https://track.yuzm.me/detail/"
 
@@ -37,9 +36,10 @@ class Case(db.Document):
 
     push_channel = db.StringField(max_length=50)
     qr_code_url = db.StringField(max_length=100)
+    qr_code_expire = db.DateTimeField(null=True)
     expire_date = db.DateField(null=True)
 
-    def updateRecord(self,result):
+    def updateRecord(self,result, push_msg=True):
         self.last_seem = datetime.datetime.now()
         self.save()
 
@@ -58,15 +58,13 @@ class Case(db.Document):
             # mark as expired now
             self.expire_date = None
         self.save()
-        if self.push_channel:
+        if self.push_channel and push_msg:
             self.push_msg()
 
-    def renew(self, days=14):
+    def renew(self, days=30):
         if self.last_update and self.last_update.status == "Issued":
             return
-        #if not self.qr_code_url or datetime.datetime.utcnow()-self.expire_date > datetime.timedelta(days=1):
         self.expire_date = (datetime.datetime.today() + datetime.timedelta(days=days)).date()
-        self.qr_code_url = get_qr_code_url(str(self.id))
         self.save()
 
     def push_msg(self, msg=None):
@@ -76,6 +74,13 @@ class Case(db.Document):
                 msg = "Case No: {}\nState: {}\nLast Update: {}".format(self.case_no, self.last_update.status, self.last_update.status_date.strftime("%x"))
         wechat_msg_push(self.push_channel, content=msg, msg_url=HOST+str(self.id))
 
+    def get_qr_code_url(self):
+        if self.qr_code_expire is None or datetime.datetime.now() > self.qr_code_expire:
+            self.qr_code_url = get_qr_code_url(str(self.id))
+            self.qr_code_expire = datetime.datetime.now() + datetime.timedelta(seconds=2592000)
+            self.save()
+        return self.qr_code_url
+            
     @staticmethod
     def bind(case_id, wx_userid):
         case = Case.objects(id=case_id).first()
@@ -112,6 +117,34 @@ def crontab_task():
 def crontab_task_debug():
     crontab_task()
     return "ok"
+
+
+@app.route("/import-aaa1222", methods=["GET", "POST"])
+def import_case():
+    error_list = []
+    if request.method == "POST":
+        req = request.form.get("lst")
+        for line in req.splitlines():
+            case_no, location, wechat_id = line.split(",")
+            if not location or location not in LocationDict.keys() :
+                error_list.append(line+", No Location")
+                continue
+            if Case.objects(case_no=case_no).count() == 1:
+                case = Case.objects(case_no=case_no).first()
+            else:
+                case = Case(case_no=case_no,location=location, created_date=parse_date(result[1]))
+            result = query_ceac_state_safe(location,case_no)
+            if isinstance(result,str):
+                error_list.append(line+", "+result)
+                continue
+            case.push_channel = wechat_id
+            case.save()
+            case.updateRecord(result, push_msg=False)
+            case.renew()
+        flash("ok")
+    return render_template("import.html", lst = "\n".join(error_list))
+
+
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -150,7 +183,7 @@ def detail_page(case_id):
             flash("Completely deleted this case, See you.")
             return redirect("/")
         if act == "renew":
-            flash("Expire +7 days")
+            flash("Expire +30 days")
             case.renew()
         if act == "refresh":
             result = query_ceac_state_safe(case.location,case.case_no)
@@ -158,7 +191,7 @@ def detail_page(case_id):
                 flash(result)
             else:
                 case.updateRecord(result)
-    record_list = Record.objects(case=case).order_by('-seem')
+    record_list = Record.objects(case=case).order_by('-status_date')
     return render_template("detail.html", case=case, record_list=record_list, location_str = LocationDict[case.location])
 
 @app.route('/endpoint', methods=["GET","POST"])
@@ -177,7 +210,7 @@ def wechat_point():
     if req["MsgType"] == "event" and req["Event"] == "subscribe" and "EventKey" in req:
         EventKey = req["EventKey"][8:]  #qrscene_
     if req["MsgType"] == "event" and req["Event"] == "SCAN":
-        EventKey = req["EventKey"]  #qrscene_
+        EventKey = req["EventKey"]
 
     if EventKey:
         Case.bind(EventKey, req["FromUserName"])
