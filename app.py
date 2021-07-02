@@ -11,7 +11,7 @@ from requests.sessions import default_hooks
 from werkzeug.utils import redirect
 from .location_list import LocationDict, LocationList
 from .wechat import get_qr_code_url, config as wx_config, check_wx_signature, xmltodict, wechat_msg_push
-from .CEACStatTracker import get_data,ERR_CAPTCHA, query_ceac_state, query_ceac_state_safe
+from .CEACStatTracker import get_data, ERR_CAPTCHA, query_ceac_state, query_ceac_state_safe
 
 app = Flask(__name__)
 app.secret_key = "eawfopawjfoawe"
