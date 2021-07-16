@@ -15,7 +15,6 @@ ERR_INVCODE = "Invalid Application ID or Case Number."
 
 URL = "https://ceac.state.gov/CEACStatTracker/Status.aspx?App=NIV"
 
-
 s = requests.Session()
 s.headers["User-Agent"]="Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/88.0"
 
@@ -27,7 +26,7 @@ def read_hidden_input(soup: BeautifulSoup):
         ret[x.attrs["name"]] = x.attrs["value"]
     return ret
 
-def get_data(soup=None):
+def get_post_data(soup=None):
     if soup is None:
         html = s.get(URL).text
         soup = BeautifulSoup(html, features="html.parser")
@@ -46,7 +45,7 @@ def get_data(soup=None):
 
 def query_ceac_state(loc, case_no, data=None):
     if data is None:
-        data = get_data()
+        data = get_post_data()
     data["ctl00$ContentPlaceHolder1$Location_Dropdown"]=loc
     data["ctl00$ContentPlaceHolder1$Visa_Case_Number"]=case_no
 
@@ -69,23 +68,21 @@ def query_ceac_state(loc, case_no, data=None):
     return (status,SubmitDate,StatusDate,Message), soup
 
 
-def query_ceac_state_safe(loc, case_no):
-    soup = None
+def query_ceac_state_safe(loc, case_no, soup=None):
     for _ in range(10):
-        data = get_data(soup)
-        result, soup = query_ceac_state(loc, case_no, data)
+        try:
+            data = get_post_data(soup)
+            result, soup = query_ceac_state(loc, case_no, data)
+        except Exception as e:
+            return str(e), None
         if result != ERR_CAPTCHA:
             break
-    return result
+    return result, soup
 
 if __name__ == "__main__":
     req = [("BEJ","AA00A38G49"), ("SHG","AA00899Z9W"),("SGP","AA009ZAT9R"),("SGP","AA009YRTFV") ]
     soup = None
     for loc, case_no in req:
-        for _ in range(10):
-            data = get_data(soup)
-            result, soup = query_ceac_state(loc, case_no, data)
-            if result != ERR_CAPTCHA:
-                break
+        result, soup = query_ceac_state_safe(loc, case_no, soup)
         print(result)
 

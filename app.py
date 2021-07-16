@@ -11,7 +11,7 @@ from requests.sessions import default_hooks
 from werkzeug.utils import redirect
 from .location_list import LocationDict, LocationList
 from .wechat import get_qr_code_url, config as wx_config, check_wx_signature, xmltodict, wechat_msg_push
-from .CEACStatTracker import get_data, ERR_CAPTCHA, query_ceac_state, query_ceac_state_safe
+from .CEACStatTracker import get_post_data, ERR_CAPTCHA, query_ceac_state, query_ceac_state_safe
 
 app = Flask(__name__)
 app.secret_key = "eawfopawjfoawe"
@@ -19,10 +19,12 @@ app.config['MONGODB_SETTINGS'] = {
     'host': 'mongodb://localhost/CEACStateTracker',
 }
 
-HOST = "https://track.yuzm.me/detail/"
+HOST = "https://track.moyu.ac.cn/detail/"
 
 db = MongoEngine(app)
 crontab = Crontab(app)
+
+EXTENT_DAYS = 90
 
 def parse_date(date_string):
     return datetime.datetime.strptime(date_string,"%d-%b-%Y").date()
@@ -61,7 +63,7 @@ class Case(db.Document):
         if self.push_channel and push_msg:
             self.push_msg()
 
-    def renew(self, days=30):
+    def renew(self, days=EXTENT_DAYS):
         if self.last_update and self.last_update.status == "Issued":
             return
         self.expire_date = (datetime.datetime.today() + datetime.timedelta(days=days)).date()
@@ -96,20 +98,12 @@ class Record(db.Document):
     status = db.StringField()
     message = db.StringField()
 
-@crontab.job(hour="14", minute="32")
+@crontab.job(hour="2,8,14,20", minute="32")
 def crontab_task():
     case_list : List[Case] = Case.objects(expire_date__gte=datetime.datetime.today())
     soup = None
     for case in case_list:
-        try:
-            for _ in range(10):
-                data = get_data(soup)
-                result, soup = query_ceac_state_safe(case.location, case.case_no, data)
-                if result != ERR_CAPTCHA:
-                    break
-        except:
-            soup = None
-            continue
+        result, soup = query_ceac_state_safe(case.location, case.case_no, soup)
         if isinstance(result, tuple):
             case.updateRecord(result)
     
@@ -133,7 +127,7 @@ def import_case():
                 case = Case.objects(case_no=case_no).first()
             else:
                 case = Case(case_no=case_no,location=location, created_date=parse_date(result[1]))
-            result = query_ceac_state_safe(location,case_no)
+            result, _ = query_ceac_state_safe(location,case_no)
             if isinstance(result,str):
                 error_list.append(line+", "+result)
                 continue
@@ -141,7 +135,7 @@ def import_case():
             case.save()
             case.updateRecord(result, push_msg=False)
             case.renew()
-        flash("ok")
+        flash("ok",category="success")
     return render_template("import.html", lst = "\n".join(error_list))
 
 
@@ -152,23 +146,23 @@ def index():
         case_no = request.form.get("case_no",None)
         location = request.form.get("location",None)
         if not case_no:
-            flash("Invaild case no")
+            flash("Invaild case no", category="danger")
             return render_template("index.html", case_no=case_no, location=location, LocationList=LocationList)
         if Case.objects(case_no=case_no).count() == 1:
             case = Case.objects(case_no=case_no).first()
             return redirect("detail/"+str(case.id))
         if not location or location not in LocationDict.keys() :
-            flash("Invaild location")
+            flash("Invaild location", category="danger")
             return render_template("index.html", case_no=case_no, location=location, LocationList=LocationList)
-        result = query_ceac_state_safe(location,case_no)
+        result, _ = query_ceac_state_safe(location,case_no)
         if isinstance(result,str):
-            flash(result)
+            flash(result, category="danger")
             return render_template("index.html", case_no=case_no, location=location, LocationList=LocationList)
         case = Case(case_no=case_no,location=location, created_date=parse_date(result[1]))
         case.save()
         case.updateRecord(result)
         case.renew()
-        flash("Created a new case for you.")
+        flash("Created a new case for you.", category="success")
         return redirect("detail/"+str(case.id))
     return render_template("index.html", LocationList=LocationList)
 
@@ -180,15 +174,15 @@ def detail_page(case_id):
         act = request.form.get("act",None)
         if act == "delete":
             case.delete()
-            flash("Completely deleted this case, See you.")
+            flash("Completely deleted this case, See you.", category="success")
             return redirect("/")
         if act == "renew":
-            flash("Expire +30 days")
+            flash(f"Expire +{EXTENT_DAYS} days", category="success")
             case.renew()
         if act == "refresh":
-            result = query_ceac_state_safe(case.location,case.case_no)
+            result, _ = query_ceac_state_safe(case.location,case.case_no)
             if isinstance(result,str):
-                flash(result)
+                flash(result, category="danger")
             else:
                 case.updateRecord(result)
     record_list = Record.objects(case=case).order_by('-status_date')
