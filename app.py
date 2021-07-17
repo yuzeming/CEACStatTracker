@@ -69,12 +69,13 @@ class Case(db.Document):
         self.expire_date = (datetime.datetime.today() + datetime.timedelta(days=days)).date()
         self.save()
 
-    def push_msg(self, msg=None):
-        if msg is None:
-            msg = "Welcome, Update of your case will be pushed here."
-            if self.last_update:
-                msg = "Case No: {}\nState: {}\nLast Update: {}".format(self.case_no, self.last_update.status, self.last_update.status_date.strftime("%x"))
-        wechat_msg_push(self.push_channel, content=msg, msg_url=HOST+str(self.id))
+    def push_msg(self, first=None, remark=None):
+        first = first or "你的签证状态有更新"
+        keyword1 = self.case_no
+        keyword1 = self.last_update.status
+        remark = "更新时间: " + self.last_update.status_date.strftime("%x") +"\n"+ self.last_update.message + "点击查看详情\n"
+        wechat_msg_push(self.push_channel, msg_url=HOST+str(self.id),
+            first=first, keyword1=keyword1, keyword2=keyword1, remark=remark)
 
     def get_qr_code_url(self):
         if self.qr_code_expire is None or datetime.datetime.now() > self.qr_code_expire:
@@ -90,7 +91,7 @@ class Case(db.Document):
             return 
         case.push_channel = wx_userid
         case.save()
-        case.push_msg()
+        case.push_msg(first="签证状态的更新会推送到这里")
 
 class Record(db.Document):
     case = db.ReferenceField(Case, reverse_delete_rule=CASCADE)
@@ -107,13 +108,13 @@ def crontab_task():
         if isinstance(result, tuple):
             case.updateRecord(result)
     
-@app.route("/task-aaa1222")
+@app.route("/task")
 def crontab_task_debug():
     crontab_task()
     return "ok"
 
 
-@app.route("/import-aaa1222", methods=["GET", "POST"])
+@app.route("/import", methods=["GET", "POST"])
 def import_case():
     error_list = []
     if request.method == "POST":

@@ -39,10 +39,21 @@ def get_access_token():
 
     return config["accessToken"]
 
-def wechat_msg_push(touser, tempID=config["tempID"], content="TEST", msg_url=""):
+'''
+ArFK9lrJ57rW4t4QQ6bqtdt8IFsLFZkLlPfrHI5hlCo
+
+{{first.DATA}}
+订单编号：{{keyword1.DATA}}
+订单状态：{{keyword2.DATA}}
+{{remark.DATA}}
+'''
+
+def wechat_msg_push(touser, tempID=config["tempID"], msg_url="", **kwargs):
     url = "https://api.weixin.qq.com/cgi-bin/message/template/send?access_token={ACCESS_TOKEN}".format(
         ACCESS_TOKEN=get_access_token())
-    data = {"CONTENT": {"value": content}}
+    data = {}
+    for k,v in kwargs.items():
+        data[k] = {"value": v}
     post_json = {"touser": touser, "template_id": tempID, "data": data, "url": msg_url}
     requests.post(url=url, json=post_json)
 
