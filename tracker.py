@@ -7,7 +7,7 @@ from urllib.parse import urljoin
 from pprint import pprint
 import logging
 
-import predict
+from .predict import pred
 
 ERR_CAPTCHA = "The code entered does not match the code displayed on the page."
 ERR_NOCASE = "Your search did not return any data."
@@ -33,7 +33,7 @@ def get_post_data(soup=None):
     data = read_hidden_input(soup)
     CaptchaImageUrl = soup.find(id="c_status_ctl00_contentplaceholder1_defaultcaptcha_CaptchaImage").attrs["src"]
     img_resp = s.get(urljoin(URL,CaptchaImageUrl))
-    data["ctl00$ContentPlaceHolder1$Captcha"]=predict.pred(img_resp.content)
+    data["ctl00$ContentPlaceHolder1$Captcha"]=pred(img_resp.content)
     data["ctl00_ToolkitScriptManager1_HiddenField"]=";;AjaxControlToolkit, Version=3.5.51116.0, Culture=neutral, PublicKeyToken=28f01b0e84b6d53e:en-US:2a06c7e2-728e-4b15-83d6-9b269fb7261e:de1feab2:f2c8e708:8613aea7:f9cec9bc:3202a5a2:a67c2700:720a52bf:589eaa30:ab09e3fe:87104b7c:be6fb298"
     data["ctl00$ContentPlaceHolder1$Visa_Application_Type"]="NIV"
     data["__EVENTTARGET"]="ctl00$ContentPlaceHolder1$btnSubmit"

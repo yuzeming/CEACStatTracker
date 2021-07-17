@@ -11,7 +11,7 @@ from requests.sessions import default_hooks
 from werkzeug.utils import redirect
 from .location_list import LocationDict, LocationList
 from .wechat import get_qr_code_url, config as wx_config, check_wx_signature, xmltodict, wechat_msg_push
-from .CEACStatTracker import get_post_data, ERR_CAPTCHA, query_ceac_state, query_ceac_state_safe
+from .tracker import get_post_data, ERR_CAPTCHA, query_ceac_state, query_ceac_state_safe
 
 app = Flask(__name__)
 app.secret_key = "eawfopawjfoawe"
@@ -41,7 +41,7 @@ class Case(db.Document):
     qr_code_expire = db.DateTimeField(null=True)
     expire_date = db.DateField(null=True)
 
-    def updateRecord(self,result, push_msg=True):
+    def updateRecord(self, result, push_msg=True):
         self.last_seem = datetime.datetime.now()
         self.save()
 
@@ -72,10 +72,10 @@ class Case(db.Document):
     def push_msg(self, first=None, remark=None):
         first = first or "你的签证状态有更新"
         keyword1 = self.case_no
-        keyword1 = self.last_update.status
-        remark = "更新时间: " + self.last_update.status_date.strftime("%x") +"\n"+ self.last_update.message + "点击查看详情\n"
+        keyword2 = self.last_update.status
+        remark = self.last_update.message
         wechat_msg_push(self.push_channel, msg_url=HOST+str(self.id),
-            first=first, keyword1=keyword1, keyword2=keyword1, remark=remark)
+            first=first, keyword1=keyword1, keyword2=keyword2, remark=remark)
 
     def get_qr_code_url(self):
         if self.qr_code_expire is None or datetime.datetime.now() > self.qr_code_expire:
@@ -99,40 +99,46 @@ class Record(db.Document):
     status = db.StringField()
     message = db.StringField()
 
-@crontab.job(hour="2,8,14,20", minute="32")
+@crontab.job(hour="*", minute="32")
 def crontab_task():
-    case_list : List[Case] = Case.objects(expire_date__gte=datetime.datetime.today())
+    last_seem_expire = datetime.datetime.now() - datetime.timedelta(hours=3)
+    case_list : List[Case] = Case.objects(expire_date__gte=datetime.datetime.today(), last_seem__lte=last_seem_expire)
     soup = None
     for case in case_list:
         result, soup = query_ceac_state_safe(case.location, case.case_no, soup)
         if isinstance(result, tuple):
             case.updateRecord(result)
-    
+
 @app.route("/task")
 def crontab_task_debug():
+    if not app.debug:
+        return "disabled"
     crontab_task()
     return "ok"
 
 
 @app.route("/import", methods=["GET", "POST"])
 def import_case():
+    if not app.debug:
+        return "disabled"
     error_list = []
     if request.method == "POST":
         req = request.form.get("lst")
         for line in req.splitlines():
-            case_no, location, wechat_id = line.split(",")
+            case_no, location = line.split()[:2]
             if not location or location not in LocationDict.keys() :
-                error_list.append(line+", No Location")
+                error_list.append(line+"\t># No Location")
                 continue
+            
+            result, _ = query_ceac_state_safe(location,case_no)
             if Case.objects(case_no=case_no).count() == 1:
                 case = Case.objects(case_no=case_no).first()
             else:
-                case = Case(case_no=case_no,location=location, created_date=parse_date(result[1]))
+                case = Case(case_no=case_no, location=location, created_date=parse_date(result[1]))
             result, _ = query_ceac_state_safe(location,case_no)
             if isinstance(result,str):
-                error_list.append(line+", "+result)
+                error_list.append(line+"\t># "+result)
                 continue
-            case.push_channel = wechat_id
             case.save()
             case.updateRecord(result, push_msg=False)
             case.renew()

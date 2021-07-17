@@ -1,6 +1,7 @@
 from io import BytesIO
 import torch
 import string
+import os
 from torchvision.transforms.functional import to_tensor 
 import torch.nn as nn
 import torch.nn.functional as F
@@ -9,6 +10,8 @@ from collections import OrderedDict
 
 characters = '-' + string.digits + string.ascii_uppercase
 width, height, n_len, n_classes = 200, 50, 6, len(characters)
+
+captcha_pth_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "captcha.pth")
 
 def decode(sequence):
     a = ''.join([characters[x] for x in sequence])
@@ -64,7 +67,7 @@ class Model(nn.Module):
 
 device = torch.device("cpu")
 model = Model(n_classes, input_shape=(3, height, width))
-model.load_state_dict(torch.load("captcha.pth", map_location=device))
+model.load_state_dict(torch.load(captcha_pth_path, map_location=device))
 model.eval()
 
 def pred(img_content):

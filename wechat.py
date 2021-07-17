@@ -7,7 +7,7 @@ from hashlib import sha1
 
 config_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "config.yaml")
 if os.path.exists(config_path):
-    config = yaml.safe_load(open("config.yaml"))
+    config = yaml.safe_load(open(config_path))
 
 def check_wx_signature(signature, timestamp, nonce, token):
     if not signature or not timestamp or not nonce or not token:
