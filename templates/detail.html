@@ -49,7 +49,7 @@
   {% else %}
   <h4>Scan this QR Code by WeChat and follow my service account to receive notifications.</h4>
   {% endif %}
-  <div id="qrcode" style="height: 200px; width: 200px;"></div>
+  <div id="qrcode" class="qrcode"></div>
   <script type="text/javascript">
   new QRCode(document.getElementById("qrcode"), "{{case.get_qr_code_url()}}");
   </script>
