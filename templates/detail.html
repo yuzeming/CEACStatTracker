@@ -24,7 +24,6 @@
 </form>
 <br>
 
-
 {% endif %}
 <h2>History</h2>
 <div class="accordion" id="accordionExample">
@@ -45,15 +44,15 @@
 </div>
 
 {% if case.expire_date %}
-    {% if case.push_channel %}
-    <h4>You already have a Wechat account binded with this case, Scan this QR Code to rebind.</h4>
-    {% else %}
-    <h4>Scan this QR Code by WeChat and follow my account to receive notifications.</h4>
-    {% endif %}
-<div id="qrcode" style="height: 200px; width: 200px;"></div>
-<script type="text/javascript">
-new QRCode(document.getElementById("qrcode"), "{{case.get_qr_code_url()}}");
-</script>
+  {% if case.push_channel %}
+  <h4>You already have a Wechat account binded with this case, Scan this QR Code to rebind.</h4>
+  {% else %}
+  <h4>Scan this QR Code by WeChat and follow my service account to receive notifications.</h4>
+  {% endif %}
+  <div id="qrcode" style="height: 200px; width: 200px;"></div>
+  <script type="text/javascript">
+  new QRCode(document.getElementById("qrcode"), "{{case.get_qr_code_url()}}");
+  </script>
 {% endif %}
 
 <h4>Delete my case</h4>
@@ -61,7 +60,5 @@ new QRCode(document.getElementById("qrcode"), "{{case.get_qr_code_url()}}");
 <input type="hidden" name="act" value="delete">
 <input type="submit" value="Delete my case" class="btn btn-danger" onclick="return confirm('Are you sure?')" >
 </form>
-
-
 
 {% endblock %}

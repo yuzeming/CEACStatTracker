@@ -32,7 +32,7 @@ def get_access_token():
     url = "https://api.weixin.qq.com/cgi-bin/token"
     ret = requests.get(url, {"grant_type": "client_credential", "appid": config["appID"], "secret":  config["appSecret"]}).json()
     if "errcode" in ret:
-        raise ret["errmsg"]
+        raise Exception(ret["errmsg"])
     config["accessToken"] = ret["access_token"]
     config["tokenExpires"] = timedelta(seconds=ret["expires_in"]) + datetime.now()
     yaml.dump(config, open("config.yaml","w"))
