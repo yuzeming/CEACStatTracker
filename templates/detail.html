@@ -8,7 +8,7 @@
 <p><b>Case No: </b> {{ case.case_no }}<br>
 <b>Location: </b>{{location_str}} ({{ case.location }})<br>
 <b>Case Created: </b>{{ case.created_date }}<br>
-<b>Case Last Seem: </b>{{ case.last_seem.strftime('%x %X') }}</p>
+<b>Case Last Seem: </b>{{ case.last_seem.strftime('%Y-%m-%d %X') }}</p>
 
 <form method="POST">
     <input type="hidden" name="act" value="refresh">
@@ -22,21 +22,20 @@
     <input type="hidden" name="act" value="renew">
     <input type="submit" value="Extend" class="btn btn-primary">
 </form>
-<br>
 
 {% endif %}
 <h2>History</h2>
-<div class="accordion" id="accordionExample">
+<div class="accordion" id="accordionHistory">
     {% for x in record_list %}
     <div class="accordion-item">
-      <h2 class="accordion-header" id="headingOne">
-        <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="true" aria-controls="collapseOne">
+      <h2 class="accordion-header" id="heading-{{loop.index}}">
+        <button class="accordion-button {{"collapsed" if not loop.first}}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-{{loop.index}}" aria-expanded="{{ "true" if loop.first else "false"}}" aria-controls="collapse-{{loop.index}}">
         {{x.status}} / {{x.status_date}}
         </button>
       </h2>
-      <div id="collapseOne" class="accordion-collapse collapse show" aria-labelledby="headingOne" data-bs-parent="#accordionExample">
+      <div id="collapse-{{loop.index}}" class="accordion-collapse collapse {%if loop.first%}show{%endif%}" aria-labelledby="heading-{{loop.index}}" data-bs-parent="#accordionHistory">
         <div class="accordion-body">
-            <pre class="highlight" style="white-space: pre-wrap; word-wrap:break-word;">{{x.message}}</pre>
+            {{x.message}}
         </div>
       </div>
     </div>
