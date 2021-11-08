@@ -9,9 +9,11 @@ from flask_crontab import Crontab
 from mongoengine.queryset.base import CASCADE
 from requests.sessions import default_hooks
 from werkzeug.utils import redirect
+
+from .tracker_remote import query_ceac_state_remote, query_ceac_state_safe
 from .location_list import LocationDict, LocationList
 from .wechat import get_qr_code_url, config as wx_config, check_wx_signature, xmltodict, wechat_msg_push
-from .tracker import get_post_data, ERR_CAPTCHA, query_ceac_state, query_ceac_state_safe
+
 
 app = Flask(__name__)
 app.secret_key = "eawfopawjfoawe"
@@ -99,15 +101,31 @@ class Record(db.Document):
     status = db.StringField()
     message = db.StringField()
 
+# @crontab.job(hour="*", minute="32")
+# def crontab_task():
+#     last_seem_expire = datetime.datetime.now() - datetime.timedelta(hours=3)
+#     case_list : List[Case] = Case.objects(expire_date__gte=datetime.datetime.today(), last_seem__lte=last_seem_expire)
+#     soup = None
+#     for case in case_list:
+#         result, soup = query_ceac_state_safe(case.location, case.case_no, soup)
+#         if isinstance(result, tuple):
+#             case.updateRecord(result)
+
+def divide_chunks(l, n):
+    for i in range(0, len(l), n): 
+        yield l[i:i + n]
+  
 @crontab.job(hour="*", minute="32")
-def crontab_task():
+def crontab_task_remote():
     last_seem_expire = datetime.datetime.now() - datetime.timedelta(hours=3)
     case_list : List[Case] = Case.objects(expire_date__gte=datetime.datetime.today(), last_seem__lte=last_seem_expire)
-    soup = None
-    for case in case_list:
-        result, soup = query_ceac_state_safe(case.location, case.case_no, soup)
-        if isinstance(result, tuple):
-            case.updateRecord(result)
+    for chunk in divide_chunks(case_list,100):
+        req_data = [(case.location, case.case_no) for case in chunk]
+        result_dict = query_ceac_state_remote(req_data)
+        for case in chunk:
+            result = result_dict[case.case_no]
+            if isinstance(result, tuple):
+                case.updateRecord(result)
 
 @app.route("/task")
 def crontab_task_debug():

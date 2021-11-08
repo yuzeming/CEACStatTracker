@@ -68,7 +68,7 @@ def query_ceac_state(loc, case_no, data=None):
     return (status,SubmitDate,StatusDate,Message), soup
 
 
-def query_ceac_state_safe(loc, case_no, soup=None):
+def query_ceac_state_safe_disable(loc, case_no, soup=None):
     for _ in range(10):
         try:
             data = get_post_data(soup)
@@ -83,6 +83,6 @@ if __name__ == "__main__":
     req = [("BEJ","AA00A38G49"), ("SHG","AA00899Z9W"),("SGP","AA009ZAT9R"),("SGP","AA009YRTFV") ]
     soup = None
     for loc, case_no in req:
-        result, soup = query_ceac_state_safe(loc, case_no, soup)
+        result, soup = query_ceac_state_safe_disable(loc, case_no, soup)
         print(result)
 
