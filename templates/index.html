@@ -8,13 +8,13 @@
   </div>
   <div class="mb-3">
       <label for="location" class="form-label">Locations (required for new case)</label> 
-      <select id="location" name="location" class="form-select">
+      <select id="location" name="location" class="form-select location-select">
         {%for loc in LocationList%}
             <option value="{{ loc[0] }}" {%if loc[0]==location %} selected {%endif%}>{{ loc[1] }}</option>
         {% endfor %}
       </select>
   </div>
-  <p class="form-text">It will take about 3 seconds, don't re-click.</p>
+  <p class="form-text">It will take about 3 seconds, don't double-click.</p>
   <input type="submit" class="btn btn-primary" value="Submit">
 </form>
 
@@ -34,6 +34,9 @@
   <script type="text/javascript">
     new QRCode(document.getElementById("qrcode-wechat"), "wxp://f2f0P_8XQa9F4qFUtmHdEjeImSTKYx4xzmS_");
     new QRCode(document.getElementById("qrcode-alipay"), "https://qr.alipay.com/fkx14657go56sbmhu01swe9");
+    $(document).ready(function() {
+      $('.location-select').select2();
+    });
     </script>
 
 
