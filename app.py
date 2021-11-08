@@ -119,19 +119,19 @@ def divide_chunks(l, n):
 def crontab_task_remote():
     last_seem_expire = datetime.datetime.now() - datetime.timedelta(hours=3)
     case_list : List[Case] = Case.objects(expire_date__gte=datetime.datetime.today(), last_seem__lte=last_seem_expire)
-    for chunk in divide_chunks(case_list,100):
+    for chunk in divide_chunks(case_list,50):
         req_data = [(case.location, case.case_no) for case in chunk]
         result_dict = query_ceac_state_remote(req_data)
         for case in chunk:
             result = result_dict[case.case_no]
-            if isinstance(result, tuple):
+            if isinstance(result, list):
                 case.updateRecord(result)
 
 @app.route("/task")
 def crontab_task_debug():
     if not app.debug:
         return "disabled"
-    crontab_task()
+    crontab_task_remote()
     return "ok"
 
 
@@ -148,12 +148,11 @@ def import_case():
                 error_list.append(line+"\t># No Location")
                 continue
             
-            result, _ = query_ceac_state_safe(location,case_no)
             if Case.objects(case_no=case_no).count() == 1:
                 case = Case.objects(case_no=case_no).first()
             else:
                 case = Case(case_no=case_no, location=location, created_date=parse_date(result[1]))
-            result, _ = query_ceac_state_safe(location,case_no)
+            result = query_ceac_state_safe(location,case_no)
             if isinstance(result,str):
                 error_list.append(line+"\t># "+result)
                 continue
@@ -179,7 +178,7 @@ def index():
         if not location or location not in LocationDict.keys() :
             flash("Invaild location", category="danger")
             return render_template("index.html", case_no=case_no, location=location, LocationList=LocationList)
-        result, _ = query_ceac_state_safe(location,case_no)
+        result = query_ceac_state_safe(location,case_no)
         if isinstance(result,str):
             flash(result, category="danger")
             return render_template("index.html", case_no=case_no, location=location, LocationList=LocationList)
@@ -205,7 +204,7 @@ def detail_page(case_id):
             flash(f"Expire +{EXTENT_DAYS} days", category="success")
             case.renew()
         if act == "refresh":
-            result, _ = query_ceac_state_safe(case.location,case.case_no)
+            result = query_ceac_state_safe(case.location,case.case_no)
             if isinstance(result,str):
                 flash(result, category="danger")
             else:
