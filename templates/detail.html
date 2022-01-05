@@ -22,8 +22,16 @@
     <input type="hidden" name="act" value="renew">
     <input type="submit" value="Extend" class="btn btn-primary">
 </form>
-
 {% endif %}
+
+
+<h2>Interview Date (Optional)</h2>
+<form method="POST">
+  <p>Submit your interview date for progress survey.</p>
+  <input type="date" name="interview_date" value="{{ case.interview_date.strftime('%Y-%m-%d') if case.interview_date else ''}}">
+  <input type="submit" value="Submut" class="btn btn-primary">
+</form>
+
 <h2>History</h2>
 <div class="accordion" id="accordionHistory">
     {% for x in record_list %}

@@ -1,0 +1,59 @@
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
+<script src="/stat.js"></script>
+<canvas id="myChart" width="400" height="400"></canvas>
+
+<script>
+    const ctx = document.getElementById('myChart');
+    const myChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: STAT_RESULT["_labels_"],
+          datasets: [{
+            label: "Issued", 
+            data: STAT_RESULT["Issued"],
+            backgroundColor:'#2ca02c' ,
+          },{
+            label: "Administrative Processing", 
+            data: STAT_RESULT["Administrative Processing"],
+            backgroundColor:  '#ff7f0e',
+          },{
+            label: "Refused", 
+          data: STAT_RESULT["Refused"],
+          backgroundColor: '#1f77b4',
+          }]
+        },
+
+        options: {
+          plugins: {
+            title: {
+                display: true,
+                text: "Cases Status by Interview date / per week"
+            },
+            subtitle: {
+              display: true,
+              text: STAT_RESULT["_update_time_"]
+          }
+        },
+
+          indexAxis: 'y',
+          // Elements options apply to all of the options unless overridden in a dataset
+          // In this case, we are setting the border of each horizontal bar to be 2px wide
+          elements: {
+            bar: {
+              borderWidth: 2,
+            }
+          },
+          
+          responsive: true,
+          scales: {
+            x: {
+              stacked: true,
+            },
+            y: {
+              stacked: true,
+            },
+          }
+        }
+    });
+</script>
+    

@@ -1,13 +1,11 @@
 import datetime
-import logging
+import json
 from typing import List
-from flask import Flask, request, flash, abort, has_request_context
+from flask import Flask, request,flash, abort, make_response
 from flask.templating import render_template
-from flask.wrappers import Response
 from flask_mongoengine import MongoEngine
 from flask_crontab import Crontab
 from mongoengine.queryset.base import CASCADE
-from requests.sessions import default_hooks
 from werkzeug.utils import redirect
 
 from .tracker_remote import query_ceac_state_remote, query_ceac_state_safe
@@ -26,7 +24,8 @@ HOST = "https://track.moyu.ac.cn/detail/"
 db = MongoEngine(app)
 crontab = Crontab(app)
 
-EXTENT_DAYS = 90
+EXTENT_DAYS = 120
+STAT_RESULT_CACHE = None
 
 def parse_date(date_string):
     return datetime.datetime.strptime(date_string,"%d-%b-%Y").date()
@@ -42,6 +41,7 @@ class Case(db.Document):
     qr_code_url = db.StringField(max_length=100)
     qr_code_expire = db.DateTimeField(null=True)
     expire_date = db.DateField(null=True)
+    interview_date = db.DateField(null=True)
 
     def updateRecord(self, result, push_msg=True):
         self.last_seem = datetime.datetime.now()
@@ -117,7 +117,9 @@ def divide_chunks(l, n):
   
 @crontab.job(hour="*", minute="32")
 def crontab_task_remote():
-    last_seem_expire = datetime.datetime.now() - datetime.timedelta(hours=3)
+    global STAT_RESULT_CACHE
+    STAT_RESULT_CACHE = None
+    last_seem_expire = datetime.datetime.now() - datetime.timedelta(hours=6)
     case_list : List[Case] = Case.objects(expire_date__gte=datetime.datetime.today(), last_seem__lte=last_seem_expire)
     for chunk in divide_chunks(case_list,50):
         req_data = [(case.location, case.case_no) for case in chunk]
@@ -163,7 +165,6 @@ def import_case():
     return render_template("import.html", lst = "\n".join(error_list))
 
 
-
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
@@ -193,7 +194,7 @@ def index():
 
 @app.route("/detail/<case_id>", methods=["GET", "POST"])
 def detail_page(case_id):
-    case = Case.objects.get_or_404(id=case_id)
+    case = Case.objects.get_or_404(id=case_id) # type: Case
     if request.method == "POST":
         act = request.form.get("act",None)
         if act == "delete":
@@ -209,8 +210,63 @@ def detail_page(case_id):
                 flash(result, category="danger")
             else:
                 case.updateRecord(result)
+        interview_date = request.form.get("interview_date",None)
+        case.interview_date = datetime.datetime.strptime(interview_date,"%Y-%m-%d")
+        case.save()
     record_list = Record.objects(case=case).order_by('-status_date')
     return render_template("detail.html", case=case, record_list=record_list, location_str = LocationDict[case.location])
+
+@app.route("/stat.js")
+def stat_result():
+    global STAT_RESULT_CACHE
+    if STAT_RESULT_CACHE is None:
+        this_week = datetime.datetime.today() - datetime.timedelta(days=datetime.datetime.today().weekday())
+        date_range = this_week - datetime.timedelta(days=52*7)
+        pipeline = [
+            {   "$match": { "interview_date":{"$gte": date_range} } },
+            {   "$lookup": { 
+                    "from": "record",
+                    "localField":"last_update",
+                    "foreignField":"_id",
+                    "as":"last_update"
+                }
+            },{
+                "$group": {
+                    "_id":{ 
+                        "date": { "$dateToString": { "format": "%Y-%m-%d", "date": "$interview_date"} },
+                        "status":"$last_update.status"
+                    },
+                    "count": {"$sum": 1}
+                }
+            }
+        ]
+        result = Case.objects().aggregate(pipeline)
+        tmp = {}
+        for line in result:
+            date = datetime.datetime.strptime(line["_id"]["date"],"%Y-%m-%d")
+            date -= datetime.timedelta(days=date.weekday())
+            date = date.strftime("%m-%d")
+            status = line["_id"]["status"][0]
+            count = int(line["count"])
+            if status not in tmp:
+                tmp[status] = {}
+            if date not in tmp[status]:
+                tmp[status][date] = 0
+            tmp[status][date] += count
+        
+        labels = [(this_week - datetime.timedelta(days=i*7)).strftime("%m-%d") for i in range(52)]
+        result = {
+            "_labels_":labels,
+            "_update_time_":  datetime.datetime.today().strftime("%Y-%m-%d %H:%M")
+        }
+        for states in tmp:
+            result[states] =[tmp[status].get(i,0) for i in labels]
+        STAT_RESULT_CACHE = "STAT_RESULT = " + json.dumps(result) + ";"
+    response = make_response(STAT_RESULT_CACHE)
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    return response
+
 
 @app.route('/endpoint', methods=["GET","POST"])
 def wechat_point():
