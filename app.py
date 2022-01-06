@@ -26,6 +26,7 @@ crontab = Crontab(app)
 
 EXTENT_DAYS = 120
 STAT_RESULT_CACHE = None
+STAT_RESULT_CACHE_TIME = None
 
 def parse_date(date_string):
     return datetime.datetime.strptime(date_string,"%d-%b-%Y").date()
@@ -117,8 +118,6 @@ def divide_chunks(l, n):
   
 @crontab.job(hour="*", minute="32")
 def crontab_task_remote():
-    global STAT_RESULT_CACHE
-    STAT_RESULT_CACHE = None
     last_seem_expire = datetime.datetime.now() - datetime.timedelta(hours=6)
     case_list : List[Case] = Case.objects(expire_date__gte=datetime.datetime.today(), last_seem__lte=last_seem_expire)
     for chunk in divide_chunks(case_list,50):
@@ -218,8 +217,8 @@ def detail_page(case_id):
 
 @app.route("/stat.js")
 def stat_result():
-    global STAT_RESULT_CACHE
-    if STAT_RESULT_CACHE is None:
+    global STAT_RESULT_CACHE, STAT_RESULT_CACHE_TIME
+    if STAT_RESULT_CACHE is None or datetime.datetime.now() - STAT_RESULT_CACHE_TIME > datetime.timedelta(minutes=1):
         this_week = datetime.datetime.today() - datetime.timedelta(days=datetime.datetime.today().weekday())
         date_range = this_week - datetime.timedelta(days=52*7)
         pipeline = [
@@ -255,9 +254,10 @@ def stat_result():
             tmp[status][date] += count
         
         labels = [(this_week - datetime.timedelta(days=i*7)).strftime("%m-%d") for i in range(52)]
+        STAT_RESULT_CACHE_TIME = datetime.datetime.now()
         result = {
             "_labels_":labels,
-            "_update_time_":  datetime.datetime.today().strftime("%Y-%m-%d %H:%M")
+            "_update_time_":  STAT_RESULT_CACHE_TIME.strftime("%Y-%m-%d %H:%M")
         }
         for states in tmp:
             result[states] =[tmp[status].get(i,0) for i in labels]
