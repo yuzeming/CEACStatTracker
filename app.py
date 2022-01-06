@@ -259,8 +259,8 @@ def stat_result():
             "_labels_":labels,
             "_update_time_":  STAT_RESULT_CACHE_TIME.strftime("%Y-%m-%d %H:%M")
         }
-        for states in tmp:
-            result[states] =[tmp[status].get(i,0) for i in labels]
+        for s in tmp:
+            result[s] =[tmp[s].get(i,0) for i in labels]
         STAT_RESULT_CACHE = "STAT_RESULT = " + json.dumps(result) + ";"
     response = make_response(STAT_RESULT_CACHE)
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
