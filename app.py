@@ -210,7 +210,8 @@ def detail_page(case_id):
             else:
                 case.updateRecord(result)
         interview_date = request.form.get("interview_date",None)
-        case.interview_date = datetime.datetime.strptime(interview_date,"%Y-%m-%d")
+        if interview_date:
+            case.interview_date = datetime.datetime.strptime(interview_date,"%Y-%m-%d")
         case.save()
     record_list = Record.objects(case=case).order_by('-status_date')
     return render_template("detail.html", case=case, record_list=record_list, location_str = LocationDict[case.location])
