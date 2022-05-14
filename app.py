@@ -17,6 +17,7 @@ app = Flask(__name__)
 app.secret_key = "eawfopawjfoawe"
 app.config['MONGODB_SETTINGS'] = {
     'host': 'mongodb://localhost/CEACStateTracker',
+    'connect': False,
 }
 
 HOST = "https://track.moyu.ac.cn/detail/"
@@ -219,7 +220,7 @@ def detail_page(case_id):
 @app.route("/stat.js")
 def stat_result():
     global STAT_RESULT_CACHE, STAT_RESULT_CACHE_TIME
-    if STAT_RESULT_CACHE is None or datetime.datetime.now() - STAT_RESULT_CACHE_TIME > datetime.timedelta(minutes=1):
+    if STAT_RESULT_CACHE is None or datetime.datetime.now() - STAT_RESULT_CACHE_TIME > datetime.timedelta(minutes=5):
         this_week = datetime.datetime.today() - datetime.timedelta(days=datetime.datetime.today().weekday())
         date_range = this_week - datetime.timedelta(days=52*7)
         pipeline = [
@@ -282,7 +283,7 @@ def wechat_point():
 
     req = xmltodict(request.data)
     EventKey = ""
-    if req["MsgType"] == "event" and req["Event"] == "subscribe" and "EventKey" in req:
+    if req["MsgType"] == "event" and req["Event"] == "subscribe" and "EventKey" in req and req["EventKey"]:
         EventKey = req["EventKey"][8:]  #qrscene_
     if req["MsgType"] == "event" and req["Event"] == "SCAN":
         EventKey = req["EventKey"]
