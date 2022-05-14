@@ -17,6 +17,7 @@ app = Flask(__name__)
 app.secret_key = "eawfopawjfoawe"
 app.config['MONGODB_SETTINGS'] = {
     'host': 'mongodb://localhost/CEACStateTracker',
+    'connect': False,
 }
 
 HOST = "https://track.moyu.ac.cn/detail/"
@@ -210,7 +211,8 @@ def detail_page(case_id):
             else:
                 case.updateRecord(result)
         interview_date = request.form.get("interview_date",None)
-        case.interview_date = datetime.datetime.strptime(interview_date,"%Y-%m-%d")
+        if interview_date:
+            case.interview_date = datetime.datetime.strptime(interview_date,"%Y-%m-%d")
         case.save()
     record_list = Record.objects(case=case).order_by('-status_date')
     return render_template("detail.html", case=case, record_list=record_list, location_str = LocationDict[case.location])
@@ -218,7 +220,7 @@ def detail_page(case_id):
 @app.route("/stat.js")
 def stat_result():
     global STAT_RESULT_CACHE, STAT_RESULT_CACHE_TIME
-    if STAT_RESULT_CACHE is None or datetime.datetime.now() - STAT_RESULT_CACHE_TIME > datetime.timedelta(minutes=1):
+    if STAT_RESULT_CACHE is None or datetime.datetime.now() - STAT_RESULT_CACHE_TIME > datetime.timedelta(minutes=5):
         this_week = datetime.datetime.today() - datetime.timedelta(days=datetime.datetime.today().weekday())
         date_range = this_week - datetime.timedelta(days=52*7)
         pipeline = [
@@ -259,8 +261,8 @@ def stat_result():
             "_labels_":labels,
             "_update_time_":  STAT_RESULT_CACHE_TIME.strftime("%Y-%m-%d %H:%M")
         }
-        for states in tmp:
-            result[states] =[tmp[status].get(i,0) for i in labels]
+        for s in tmp:
+            result[s] =[tmp[s].get(i,0) for i in labels]
         STAT_RESULT_CACHE = "STAT_RESULT = " + json.dumps(result) + ";"
     response = make_response(STAT_RESULT_CACHE)
     response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
@@ -281,7 +283,7 @@ def wechat_point():
 
     req = xmltodict(request.data)
     EventKey = ""
-    if req["MsgType"] == "event" and req["Event"] == "subscribe" and "EventKey" in req:
+    if req["MsgType"] == "event" and req["Event"] == "subscribe" and "EventKey" in req and req["EventKey"]:
         EventKey = req["EventKey"][8:]  #qrscene_
     if req["MsgType"] == "event" and req["Event"] == "SCAN":
         EventKey = req["EventKey"]

@@ -34,7 +34,7 @@ def get_access_token():
     if "errcode" in ret:
         raise Exception(ret["errmsg"])
     config["accessToken"] = ret["access_token"]
-    config["tokenExpires"] = timedelta(seconds=ret["expires_in"]) + datetime.now()
+    config["tokenExpires"] = timedelta(seconds=ret["expires_in"] - 300) + datetime.now()
     yaml.dump(config, open("config.yaml","w"))
 
     return config["accessToken"]
@@ -63,6 +63,6 @@ def get_qr_code_url(scene_str):
     post_json = {"expire_seconds": 2592000, "action_name": "QR_STR_SCENE", "action_info": {"scene": {"scene_str": scene_str}} }
     ret = requests.post(url=url, json=post_json).json()
     if "errcode" in ret:
-        raise ret["errmsg"]
+        raise RuntimeError(ret["errmsg"])
     return ret["url"]
 
