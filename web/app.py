@@ -4,7 +4,7 @@ from typing import List
 from flask import Flask, request,flash, abort, make_response
 from flask.templating import render_template
 from flask_mongoengine import MongoEngine
-from flask_crontab import Crontab
+
 from mongoengine.queryset.base import CASCADE
 from werkzeug.utils import redirect
 
@@ -23,7 +23,6 @@ app.config['MONGODB_SETTINGS'] = {
 HOST = "https://track.moyu.ac.cn/detail/"
 
 db = MongoEngine(app)
-crontab = Crontab(app)
 
 EXTENT_DAYS = 120
 STAT_RESULT_CACHE = None
@@ -116,25 +115,17 @@ class Record(db.Document):
 def divide_chunks(l, n):
     for i in range(0, len(l), n): 
         yield l[i:i + n]
-  
-@crontab.job(hour="*", minute="32")
+
 def crontab_task_remote():
-    last_seem_expire = datetime.datetime.now() - datetime.timedelta(hours=6)
+    last_seem_expire = datetime.datetime.now() - datetime.timedelta(hours=4)
     case_list : List[Case] = Case.objects(expire_date__gte=datetime.datetime.today(), last_seem__lte=last_seem_expire)
-    for chunk in divide_chunks(case_list,50):
+    for chunk in divide_chunks(case_list,20):
         req_data = [(case.location, case.case_no) for case in chunk]
         result_dict = query_ceac_state_remote(req_data)
         for case in chunk:
             result = result_dict[case.case_no]
             if isinstance(result, list):
                 case.updateRecord(result)
-
-@app.route("/task")
-def crontab_task_debug():
-    if not app.debug:
-        return "disabled"
-    crontab_task_remote()
-    return "ok"
 
 
 @app.route("/import", methods=["GET", "POST"])
