@@ -1,9 +1,5 @@
-beautifulsoup4
 Flask
 flask-mongoengine
 PyYAML
 requests
-torch
-torchvision
-pillow==8.2.0
 flask_crontab
