@@ -74,11 +74,13 @@ def get_post_data(soup=None):
     data["__LASTFOCUS"]=""
     return data
 
-def query_ceac_state(loc, case_no, data=None):
+def query_ceac_state(loc, case_no, pp_no, surname, data=None):
     if data is None:
         data = get_post_data()
     data["ctl00$ContentPlaceHolder1$Location_Dropdown"]=loc
     data["ctl00$ContentPlaceHolder1$Visa_Case_Number"]=case_no
+    data["ctl00$ContentPlaceHolder1$Passport_Number"]=pp_no
+    data["ctl00$ContentPlaceHolder1$Surname"]=surname
 
     resp = s.post(URL,data)
     soup = BeautifulSoup(resp.text, features="html.parser")
@@ -99,14 +101,14 @@ def query_ceac_state(loc, case_no, data=None):
     return (status,SubmitDate,StatusDate,Message), soup
 
 
-def query_ceac_state_safe(loc, case_no, soup=None):
+def query_ceac_state_safe(loc, case_no, pp_no, surname, soup=None):
     for _ in range(5):
         try:
             data = get_post_data(soup)
-            result, soup = query_ceac_state(loc, case_no, data)
-            logger.info("Info!,%s-%s: %s",loc, case_no, result)
+            result, soup = query_ceac_state(loc, case_no, pp_no, surname, data)
+            logger.info("Info!,%s-%s: %s",loc, case_no, pp_no, surname, result)
         except Exception as e:
-            logger.error("Error!,%s-%s: %s",loc, case_no, e)
+            logger.error("Error!,%s-%s: %s",loc, case_no, pp_no, surname, e)
             return str(e), None
         if result != ERR_CAPTCHA:
             break
@@ -117,14 +119,14 @@ def main_handler(event, context):
     req = json.loads(event.body)
     ret = {}
     for loc, case_no in req:
-        result, soup = query_ceac_state_safe(loc, case_no, soup)
+        result, soup = query_ceac_state_safe(loc, case_no, pp_no, surname, soup)
         ret[case_no] = result
     return json.dumps(ret)
 
 if __name__ == "__main__":
-    req = [("BEJ","AA00A38G49"), ("SHG","AA00899Z9W"),("SGP","AA009ZAT9R"),("SGP","AA009YRTFV") ]
+    req = [("TOR","AA00C9KGYV", "E12345678", "ZHOU")]
     soup = None
     for loc, case_no in req:
-        result, soup = query_ceac_state_safe(loc, case_no, soup)
+        result, soup = query_ceac_state_safe(loc, case_no, pp_no, surname, soup)
         print(result)
 
