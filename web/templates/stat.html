@@ -1,6 +1,6 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
 <script src="/stat.js"></script>
-<canvas id="myChart" width="400" height="400"></canvas>
+<canvas id="myChart" style="width: 100%;"></canvas>
 
 <script>
     const ctx = document.getElementById('myChart');
@@ -45,6 +45,7 @@
           },
           
           responsive: true,
+          maintainAspectRatio: false,
           scales: {
             x: {
               stacked: true,

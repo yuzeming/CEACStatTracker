@@ -37,6 +37,7 @@ class Case(db.Document):
     last_update = db.ReferenceField("Record")
     created_date = db.DateField(format)
     last_seem = db.DateTimeField(default=datetime.datetime.now)
+    info = db.StringField(max_length=1000) # to store the encrypted personal info
 
     push_channel = db.StringField(max_length=50)
     qr_code_url = db.StringField(max_length=100)
@@ -118,9 +119,9 @@ def divide_chunks(l, n):
 
 def crontab_task_remote():
     last_seem_expire = datetime.datetime.now() - datetime.timedelta(hours=4)
-    case_list : List[Case] = Case.objects(expire_date__gte=datetime.datetime.today(), last_seem__lte=last_seem_expire)
+    case_list : List[Case] = Case.objects(expire_date__gte=datetime.datetime.today(), last_seem__lte=last_seem_expire, info__ne=None)
     for chunk in divide_chunks(case_list,20):
-        req_data = [(case.location, case.case_no) for case in chunk]
+        req_data = [(case.location, case.case_no, case.info) for case in chunk]
         result_dict = query_ceac_state_remote(req_data)
         for case in chunk:
             result = result_dict[case.case_no]
@@ -128,32 +129,32 @@ def crontab_task_remote():
                 case.updateRecord(result)
 
 
-@app.route("/import", methods=["GET", "POST"])
-def import_case():
-    if not app.debug:
-        return "disabled"
-    error_list = []
-    if request.method == "POST":
-        req = request.form.get("lst")
-        for line in req.splitlines():
-            case_no, location = line.split()[:2]
-            if not location or location not in LocationDict.keys() :
-                error_list.append(line+"\t># No Location")
-                continue
+# @app.route("/import", methods=["GET", "POST"])
+# def import_case():
+#     if not app.debug:
+#         return "disabled"
+#     error_list = []
+#     if request.method == "POST":
+#         req = request.form.get("lst")
+#         for line in req.splitlines():
+#             case_no, location = line.split()[:2]
+#             if not location or location not in LocationDict.keys() :
+#                 error_list.append(line+"\t># No Location")
+#                 continue
             
-            if Case.objects(case_no=case_no).count() == 1:
-                case = Case.objects(case_no=case_no).first()
-            else:
-                case = Case(case_no=case_no, location=location, created_date=parse_date(result[1]))
-            result = query_ceac_state_safe(location,case_no)
-            if isinstance(result,str):
-                error_list.append(line+"\t># "+result)
-                continue
-            case.save()
-            case.updateRecord(result, push_msg=False)
-            case.renew()
-        flash("ok",category="success")
-    return render_template("import.html", lst = "\n".join(error_list))
+#             if Case.objects(case_no=case_no).count() == 1:
+#                 case = Case.objects(case_no=case_no).first()
+#             else:
+#                 case = Case(case_no=case_no, location=location, created_date=parse_date(result[1]))
+#             result = query_ceac_state_safe(location,case_no)
+#             if isinstance(result,str):
+#                 error_list.append(line+"\t># "+result)
+#                 continue
+#             case.save()
+#             case.updateRecord(result, push_msg=False)
+#             case.renew()
+#         flash("ok",category="success")
+#     return render_template("import.html", lst = "\n".join(error_list))
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -161,6 +162,7 @@ def index():
     if request.method == "POST":
         case_no = request.form.get("case_no",None)
         location = request.form.get("location",None)
+        info = request.form.get("info",None)
         if not case_no:
             flash("Invaild case no", category="danger")
             return render_template("index.html", case_no=case_no, location=location, LocationList=LocationList)
@@ -170,11 +172,11 @@ def index():
         if not location or location not in LocationDict.keys() :
             flash("Invaild location", category="danger")
             return render_template("index.html", case_no=case_no, location=location, LocationList=LocationList)
-        result = query_ceac_state_safe(location,case_no)
+        result = query_ceac_state_safe(location, case_no, info)
         if isinstance(result,str):
             flash(result, category="danger")
             return render_template("index.html", case_no=case_no, location=location, LocationList=LocationList)
-        case = Case(case_no=case_no,location=location, created_date=parse_date(result[1]))
+        case = Case(case_no=case_no,location=location, created_date=parse_date(result[1]), info=info)
         case.save()
         case.updateRecord(result)
         case.renew()

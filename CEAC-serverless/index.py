@@ -14,11 +14,19 @@ from io import BytesIO
 import logging
 import time
 import json
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives import hashes
 
 logger = logging.getLogger()
 
 characters = '-' + string.digits + string.ascii_uppercase
 width, height, n_len, n_classes = 200, 50, 6, len(characters)
+
+private_key = serialization.load_pem_private_key(
+    open('private_key.pem', 'rb').read(),
+    password=None,
+)
 
 def decode(sequence):
     a = ''.join([characters[x] for x in sequence])
@@ -43,6 +51,7 @@ def pred(img_content):
 ERR_CAPTCHA = "The code entered does not match the code displayed on the page."
 ERR_NOCASE = "Your search did not return any data."
 ERR_INVCODE = "Invalid Application ID or Case Number."
+ERR_DECRYPT = "Decrypt Error"
 
 URL = "https://ceac.state.gov/CEACStatTracker/Status.aspx?App=NIV"
 
@@ -74,11 +83,13 @@ def get_post_data(soup=None):
     data["__LASTFOCUS"]=""
     return data
 
-def query_ceac_state(loc, case_no, data=None):
+def query_ceac_state(loc, case_no, passport_number, surname, data=None):
     if data is None:
         data = get_post_data()
     data["ctl00$ContentPlaceHolder1$Location_Dropdown"]=loc
     data["ctl00$ContentPlaceHolder1$Visa_Case_Number"]=case_no
+    data["ctl00$ContentPlaceHolder1$Passport_Number"] = passport_number
+    data["ctl00$ContentPlaceHolder1$Surname"] = surname
 
     resp = s.post(URL,data)
     soup = BeautifulSoup(resp.text, features="html.parser")
@@ -99,11 +110,25 @@ def query_ceac_state(loc, case_no, data=None):
     return (status,SubmitDate,StatusDate,Message), soup
 
 
-def query_ceac_state_safe(loc, case_no, soup=None):
+def query_ceac_state_safe(loc, case_no, info, soup=None):
+    #decrypt addition_info by RSA
+    try:
+        plaintext = private_key.decrypt(
+            info,
+            padding.OAEP(
+                mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                algorithm=hashes.SHA256(),
+                label=None
+            )
+        )
+        passport_number, surname = plaintext.decode().split(",")
+    except Exception as e:
+        return ERR_DECRYPT, None
+    
     for _ in range(5):
         try:
             data = get_post_data(soup)
-            result, soup = query_ceac_state(loc, case_no, data)
+            result, soup = query_ceac_state(loc, case_no, passport_number, surname, data)
             logger.info("Info!,%s-%s: %s",loc, case_no, result)
         except Exception as e:
             logger.error("Error!,%s-%s: %s",loc, case_no, e)
@@ -116,15 +141,15 @@ def query_ceac_state_safe(loc, case_no, soup=None):
 def main_handler(event, context):
     req = json.loads(event.body)
     ret = {}
-    for loc, case_no in req:
-        result, soup = query_ceac_state_safe(loc, case_no, soup)
+    for loc, case_no, info in req:
+        result, soup = query_ceac_state_safe(loc, case_no, info, soup)
         ret[case_no] = result
     return json.dumps(ret)
 
-if __name__ == "__main__":
-    req = [("BEJ","AA00A38G49"), ("SHG","AA00899Z9W"),("SGP","AA009ZAT9R"),("SGP","AA009YRTFV") ]
-    soup = None
-    for loc, case_no in req:
-        result, soup = query_ceac_state_safe(loc, case_no, soup)
-        print(result)
+# if __name__ == "__main__":
+#     req = [("BEJ","AA00A38G49"), ("SHG","AA00899Z9W"),("SGP","AA009ZAT9R"),("SGP","AA009YRTFV") ]
+#     soup = None
+#     for loc, case_no in req:
+#         result, soup = query_ceac_state_safe(loc, case_no, soup)
+#         print(result)
 

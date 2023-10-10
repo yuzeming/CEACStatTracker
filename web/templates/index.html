@@ -1,10 +1,19 @@
 {% extends "base.html" %}
 {% block content %}
-
-<form  method="POST" style="max-width: 600px;">
+<h2>Login</h2>
+<form method="POST" style="max-width: 600px;">
   <div class="mb-3">
       <label for="case_no" class="form-label">Application No.</label>
-      <input class="form-control" placeholder="AA00ABC123" id="case_no" name="case_no" value="{{ case_no }}" required=required>
+      <input class="form-control" placeholder="AA00ABC123" id="case_no_new" name="case_no" value="{{ case_no }}" required=required>
+  </div>
+  <input type="submit" class="btn btn-primary" value="Login">
+</form>
+
+<h2>Register</h2>
+<form method="POST" style="max-width: 600px;">
+  <div class="mb-3">
+    <label for="case_no" class="form-label">Application No.</label>
+    <input class="form-control" placeholder="AA00ABC123" id="case_no" name="case_no" value="{{ case_no }}" required=required>
   </div>
   <div class="mb-3">
       <label for="location" class="form-label">Locations (required for new case)</label> 
@@ -14,10 +23,16 @@
         {% endfor %}
       </select>
   </div>
-  <p class="form-text">It will take about 3 seconds, don't double-click.</p>
-  <input type="submit" class="btn btn-primary" value="Submit">
+  <div class="mb-3">
+    <label for="passport_number">Passport Number (required for new case)</label>
+    <input class="form-control" placeholder="AA00ABC123" id="passport_number" name="passport_number">
+  </div>
+  <div class="mb-3">
+    <label for="surname">First 5 Letters of Surname</label>
+    <input class="form-control" placeholder="ZHANG" id="surname" name="surname">
+  </div>
+  <input type="submit" class="btn btn-primary" value="Register">
 </form>
-
 
   {%include "stat.html" %}
   <h4>Buy me a coffee.</h4>
