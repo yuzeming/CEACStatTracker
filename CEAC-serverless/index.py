@@ -146,10 +146,27 @@ def main_handler(event, context):
         ret[case_no] = result
     return json.dumps(ret)
 
-# if __name__ == "__main__":
-#     req = [("BEJ","AA00A38G49"), ("SHG","AA00899Z9W"),("SGP","AA009ZAT9R"),("SGP","AA009YRTFV") ]
-#     soup = None
-#     for loc, case_no in req:
-#         result, soup = query_ceac_state_safe(loc, case_no, soup)
-#         print(result)
 
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+class TestProxyHandler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        """Respond to a GET request."""
+        event = {
+            "body":self.rfile.read()
+        }
+        context = {}
+        ret = main_handler(event, context)
+        self.send_response(200)
+        self.send_header("Content-type", "application/json")
+        self.end_headers()
+        self.wfile.write(ret.encode())
+
+def run(server_class=HTTPServer, handler_class=TestProxyHandler):
+    server_address = ('', 8000)
+    httpd = server_class(server_address, handler_class)
+    httpd.serve_forever()
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    run()

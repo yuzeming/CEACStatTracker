@@ -1,37 +1,44 @@
 {% extends "base.html" %}
 {% block content %}
 <h2>Login</h2>
-<form method="POST" style="max-width: 600px;">
+<form method="POST">
   <div class="mb-3">
       <label for="case_no" class="form-label">Application No.</label>
-      <input class="form-control" placeholder="AA00ABC123" id="case_no_new" name="case_no" value="{{ case_no }}" required=required>
+      <input class="form-control" placeholder="AA00ABC123" id="case_no_login" name="case_no" value="{{ case_no }}" required=required>
   </div>
   <input type="submit" class="btn btn-primary" value="Login">
 </form>
 
 <h2>Register</h2>
-<form method="POST" style="max-width: 600px;">
+<form method="POST" id="reg_form">
   <div class="mb-3">
     <label for="case_no" class="form-label">Application No.</label>
-    <input class="form-control" placeholder="AA00ABC123" id="case_no" name="case_no" value="{{ case_no }}" required=required>
+    <input class="form-control" placeholder="AA00ABC123" id="case_no" name="case_no"  value="{{ case_no }}" required=required>
   </div>
   <div class="mb-3">
-      <label for="location" class="form-label">Locations (required for new case)</label> 
-      <select id="location" name="location" class="form-select location-select">
+      <label for="location" class="form-label">Locations</label> 
+      <select id="location" name="location" class="form-select location-select" required=required>
         {%for loc in LocationList%}
             <option value="{{ loc[0] }}" {%if loc[0]==location %} selected {%endif%}>{{ loc[1] }}</option>
         {% endfor %}
       </select>
   </div>
   <div class="mb-3">
-    <label for="passport_number">Passport Number (required for new case)</label>
-    <input class="form-control" placeholder="AA00ABC123" id="passport_number" name="passport_number">
+    <label for="passport_number">Passport Number</label>
+    <input class="form-control" placeholder="E01234567" id="passport_number" required=required>
   </div>
   <div class="mb-3">
     <label for="surname">First 5 Letters of Surname</label>
-    <input class="form-control" placeholder="ZHANG" id="surname" name="surname">
+    <input class="form-control" placeholder="ZHANG" id="surname" required=required>
   </div>
-  <input type="submit" class="btn btn-primary" value="Register">
+  <input type="hidden" id="info" name="info" value="">
+  <div class="form-text">
+    All fields are required. 
+    The passport number and surname are encrypted by <a href="https://en.wikipedia.org/wiki/RSA_(cryptosystem)">RSA</a>and stored in the database. 
+    It's only decrypted at the Serverless Cloud Function runtime to query your visa update.
+    This informaton will be deleted after your visa is issued.
+  </div>
+  <input type="submit" class="btn btn-primary" value="Register"">
 </form>
 
   {%include "stat.html" %}
@@ -54,7 +61,84 @@
     $(document).ready(function() {
       $('.location-select').select2();
     });
-    </script>
+
+    const pemEncodedKey = `{{PUBLIC_KEY}}`;
+
+
+    //from https://github.com/mdn/dom-examples/blob/main/web-crypto/import-key/spki.js
+    function importRsaKey(pem) {
+      // fetch the part of the PEM string between header and footer
+      const pemHeader = "-----BEGIN PUBLIC KEY-----";
+      const pemFooter = "-----END PUBLIC KEY-----";
+      const pemContents = pem.replace(pemHeader, "").replace(pemFooter, "");
+      // base64 decode the string to get the binary data
+      const binaryDerString = window.atob(pemContents);
+      // convert from a binary string to an ArrayBuffer
+      var encoder = new TextEncoder();
+      const binaryDer = encoder.encode(binaryDerString);
+
+      return window.crypto.subtle.importKey(
+        "spki",
+        binaryDer,
+        {
+          name: "RSA-OAEP",
+          hash: "SHA-256",
+        },
+        true,
+        ["encrypt"],
+      );
+    }
+
+    async function encrypt_info() {
+      let pub_key = await importRsaKey(pemEncodedKey);
+      let message = $('#passport_number').val() + "," + $('#surname').val();
+      let enc = new TextEncoder();
+      let encoded = enc.encode(message);
+      let ciphertext = await window.crypto.subtle.encrypt(
+      {
+        name: "RSA-OAEP"
+      },
+      pub_key,
+      encoded
+      );
+      let encrypted = windows.btoa(String.fromCharCode(...new Uint8Array(ciphertext)));
+      $('#info').val(encrypted);
+      return encrypted;
+    }
+
+    async function submit_form(event) {
+    var formData = {
+      case_no: $("#case_no").val(),
+      location: $("#location").val(),
+      info: await encrypt_info(),
+    };
+
+    $.ajax({
+      type: "POST",
+      url: "register",
+      data: formData,
+      dataType: "json",
+      encode: true,
+    }).done((data) => {
+      console.log(data);
+      if (data.status == "success") {
+        windows.location.href = "/detail/" + data.case_id;
+      } else {
+        alert(data.message);
+      }
+    });
+
+    
+  }
+
+  $("#reg_form").submit((event) => {
+    $("#reg_form").disabled = true;
+    submit_form(event).then(
+      ()=>{$("#reg_form").disabled = false}
+    );
+    event.preventDefault();
+  });
+  </script>
 
 
 {% endblock %}

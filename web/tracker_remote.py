@@ -2,8 +2,13 @@ import requests
 
 URL = ""
 
-def query_ceac_state_safe(loc, case_no, addtional_info):
-    req = requests.post(URL, json=[[loc,case_no,addtional_info]], timeout=100)
+def query_ceac_state_safe(loc, case_no, info):
+    retry = 0
+    while retry < 5:
+        req = requests.post(URL, json=[[loc,case_no,info]], timeout=10)
+        if ret:
+            break
+        retry += 1
     ret = req.json()
     return ret[case_no]
 

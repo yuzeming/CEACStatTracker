@@ -1,9 +1,10 @@
 import datetime
 import json
+import os
 from typing import List
-from flask import Flask, request,flash, abort, make_response
+from flask import Flask, request,flash, abort, make_response, jsonify
 from flask.templating import render_template
-from flask_mongoengine import MongoEngine
+import mongoengine
 
 from mongoengine.queryset.base import CASCADE
 from werkzeug.utils import redirect
@@ -14,36 +15,35 @@ from .wechat import get_qr_code_url, config as wx_config, check_wx_signature, xm
 
 
 app = Flask(__name__)
-app.secret_key = "eawfopawjfoawe"
-app.config['MONGODB_SETTINGS'] = {
-    'host': 'mongodb://localhost/CEACStateTracker',
-    'connect': False,
-}
-
+app.secret_key = "os.urandom(24)"
 HOST = "https://track.moyu.ac.cn/detail/"
 
-db = MongoEngine(app)
+db = mongoengine.connect("CEACStateTracker")
+
+public_key_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "public.pem")
+PUBLIC_KEY = open(public_key_path).read()
 
 EXTENT_DAYS = 120
 STAT_RESULT_CACHE = None
 STAT_RESULT_CACHE_TIME = None
+STAT_RESULT_CACHE_MAX_AGE = 300
 
 def parse_date(date_string):
     return datetime.datetime.strptime(date_string,"%d-%b-%Y").date()
 
-class Case(db.Document):
-    case_no = db.StringField(max_length=20, unique=True)
-    location = db.StringField(max_length=5, choice=LocationList)
-    last_update = db.ReferenceField("Record")
-    created_date = db.DateField(format)
-    last_seem = db.DateTimeField(default=datetime.datetime.now)
-    info = db.StringField(max_length=1000) # to store the encrypted personal info
+class Case(mongoengine.Document):
+    case_no = mongoengine.StringField(max_length=20, unique=True)
+    location = mongoengine.StringField(max_length=5, choice=LocationList)
+    last_update = mongoengine.ReferenceField("Record")
+    created_date = mongoengine.DateField(default=datetime.datetime.now)
+    last_seem = mongoengine.DateTimeField()
+    info = mongoengine.StringField(max_length=1000) # to store the encrypted personal info
 
-    push_channel = db.StringField(max_length=50)
-    qr_code_url = db.StringField(max_length=100)
-    qr_code_expire = db.DateTimeField(null=True)
-    expire_date = db.DateField(null=True)
-    interview_date = db.DateField(null=True)
+    push_channel = mongoengine.StringField(max_length=50)
+    qr_code_url = mongoengine.StringField(max_length=100)
+    qr_code_expire = mongoengine.DateTimeField(null=True)
+    expire_date = mongoengine.DateField(null=True)
+    interview_date = mongoengine.DateField(null=True)
 
     def updateRecord(self, result, push_msg=True):
         self.last_seem = datetime.datetime.now()
@@ -63,6 +63,8 @@ class Case(db.Document):
         if status == "Issued":
             # mark as expired now
             self.expire_date = None
+            # delete the encrypted personal info
+            self.info = None
         self.save()
         if self.push_channel and push_msg:
             self.push_msg()
@@ -97,21 +99,11 @@ class Case(db.Document):
         case.save()
         case.push_msg(first="签证状态的更新会推送到这里")
 
-class Record(db.Document):
-    case = db.ReferenceField(Case, reverse_delete_rule=CASCADE)
-    status_date = db.DateField()
-    status = db.StringField()
-    message = db.StringField()
-
-# @crontab.job(hour="*", minute="32")
-# def crontab_task():
-#     last_seem_expire = datetime.datetime.now() - datetime.timedelta(hours=3)
-#     case_list : List[Case] = Case.objects(expire_date__gte=datetime.datetime.today(), last_seem__lte=last_seem_expire)
-#     soup = None
-#     for case in case_list:
-#         result, soup = query_ceac_state_safe(case.location, case.case_no, soup)
-#         if isinstance(result, tuple):
-#             case.updateRecord(result)
+class Record(mongoengine.Document):
+    case = mongoengine.ReferenceField(Case, reverse_delete_rule=CASCADE)
+    status_date = mongoengine.DateField()
+    status = mongoengine.StringField()
+    message = mongoengine.StringField()
 
 def divide_chunks(l, n):
     for i in range(0, len(l), n): 
@@ -129,65 +121,50 @@ def crontab_task_remote():
                 case.updateRecord(result)
 
 
-# @app.route("/import", methods=["GET", "POST"])
-# def import_case():
-#     if not app.debug:
-#         return "disabled"
-#     error_list = []
-#     if request.method == "POST":
-#         req = request.form.get("lst")
-#         for line in req.splitlines():
-#             case_no, location = line.split()[:2]
-#             if not location or location not in LocationDict.keys() :
-#                 error_list.append(line+"\t># No Location")
-#                 continue
-            
-#             if Case.objects(case_no=case_no).count() == 1:
-#                 case = Case.objects(case_no=case_no).first()
-#             else:
-#                 case = Case(case_no=case_no, location=location, created_date=parse_date(result[1]))
-#             result = query_ceac_state_safe(location,case_no)
-#             if isinstance(result,str):
-#                 error_list.append(line+"\t># "+result)
-#                 continue
-#             case.save()
-#             case.updateRecord(result, push_msg=False)
-#             case.renew()
-#         flash("ok",category="success")
-#     return render_template("import.html", lst = "\n".join(error_list))
-
-
 @app.route("/", methods=["GET", "POST"])
 def index():
+    case_no = ""
     if request.method == "POST":
         case_no = request.form.get("case_no",None)
-        location = request.form.get("location",None)
-        info = request.form.get("info",None)
-        if not case_no:
-            flash("Invaild case no", category="danger")
-            return render_template("index.html", case_no=case_no, location=location, LocationList=LocationList)
-        if Case.objects(case_no=case_no).count() == 1:
+        if case_no and Case.objects(case_no=case_no).count() == 1:
             case = Case.objects(case_no=case_no).first()
             return redirect("detail/"+str(case.id))
-        if not location or location not in LocationDict.keys() :
-            flash("Invaild location", category="danger")
-            return render_template("index.html", case_no=case_no, location=location, LocationList=LocationList)
-        result = query_ceac_state_safe(location, case_no, info)
-        if isinstance(result,str):
-            flash(result, category="danger")
-            return render_template("index.html", case_no=case_no, location=location, LocationList=LocationList)
-        case = Case(case_no=case_no,location=location, created_date=parse_date(result[1]), info=info)
-        case.save()
-        case.updateRecord(result)
-        case.renew()
-        flash("Created a new case for you.", category="success")
-        return redirect("detail/"+str(case.id))
-    return render_template("index.html", LocationList=LocationList)
+        else:
+            flash("No such case, Register First?", category="danger")
+    return render_template("index.html",case_no=case_no, LocationList=LocationList, PUBLIC_KEY=PUBLIC_KEY)
 
+
+@app.route("/register", methods=["POST"])
+def register():
+    case_no = request.form.get("case_no",None)
+    location = request.form.get("location",None)
+    info = request.form.get("info",None)
+    if not case_no:
+        return jsonify({"status":"error", "error":"Invaild case no"})
+    if Case.objects(case_no=case_no, info__ne= None).count() == 1:
+        case = Case.objects(case_no=case_no).first()
+        return jsonify({"status":"success", "case_id":str(case.id),})
+    if not location or location not in LocationDict.keys() :
+        return jsonify({"status":"error", "error":"Invaild location"})
+    result = query_ceac_state_safe(location, case_no, info)
+    if isinstance(result,str):
+        return jsonify({"status":"error", "error":result})
+    if Case.objects(case_no=case_no).count() == 1: # update the old case add info
+        case = Case.objects(case_no=case_no).first()
+        case.location = location
+        case.info = info
+    else:
+        case = Case(case_no=case_no,location=location, created_date=parse_date(result[1]), info=info)
+    case.save()
+    case.updateRecord(result)
+    case.renew()
+    return jsonify({"status":"success", "case_id":str(case.id)})
 
 @app.route("/detail/<case_id>", methods=["GET", "POST"])
 def detail_page(case_id):
-    case = Case.objects.get_or_404(id=case_id) # type: Case
+    case = Case.objects(id=case_id).first() # type: Case
+    if case is None:
+        return abort(404)
     if request.method == "POST":
         act = request.form.get("act",None)
         if act == "delete":
@@ -197,8 +174,8 @@ def detail_page(case_id):
         if act == "renew":
             flash(f"Expire +{EXTENT_DAYS} days", category="success")
             case.renew()
-        if act == "refresh":
-            result = query_ceac_state_safe(case.location,case.case_no)
+        if act == "refresh" and case.info is not None:
+            result = query_ceac_state_safe(case.location,case.case_no,case.info)
             if isinstance(result,str):
                 flash(result, category="danger")
             else:
@@ -208,12 +185,14 @@ def detail_page(case_id):
             case.interview_date = datetime.datetime.strptime(interview_date,"%Y-%m-%d")
         case.save()
     record_list = Record.objects(case=case).order_by('-status_date')
+    if case.info is None and case.state != "Issued":
+        flash("Please register again and complete the passport number and surname. You don't need to delete this old case.", category="warning")
     return render_template("detail.html", case=case, record_list=record_list, location_str = LocationDict[case.location])
 
 @app.route("/stat.js")
 def stat_result():
     global STAT_RESULT_CACHE, STAT_RESULT_CACHE_TIME
-    if STAT_RESULT_CACHE is None or datetime.datetime.now() - STAT_RESULT_CACHE_TIME > datetime.timedelta(minutes=5):
+    if STAT_RESULT_CACHE is None or datetime.datetime.now() - STAT_RESULT_CACHE_TIME > datetime.timedelta(seconds=STAT_RESULT_CACHE_MAX_AGE):
         this_week = datetime.datetime.today() - datetime.timedelta(days=datetime.datetime.today().weekday())
         date_range = this_week - datetime.timedelta(days=52*7)
         pipeline = [
@@ -258,8 +237,8 @@ def stat_result():
             result[s] =[tmp[s].get(i,0) for i in labels]
         STAT_RESULT_CACHE = "STAT_RESULT = " + json.dumps(result) + ";"
     response = make_response(STAT_RESULT_CACHE)
-    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-    response.headers['Pragma'] = 'no-cache'
+    response.headers['Cache-Control'] = f'max-age={STAT_RESULT_CACHE_MAX_AGE}'
+    response.headers['Content-Type'] = 'application/javascript'
     return response
 
 

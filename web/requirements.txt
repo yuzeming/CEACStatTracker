@@ -1,5 +1,4 @@
 Flask
-flask-mongoengine
+mongoengine
 PyYAML
 requests
-flask_crontab
