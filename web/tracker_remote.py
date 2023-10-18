@@ -1,12 +1,12 @@
 import requests
 
-URL = ""
+URL = "http://127.0.0.1:8000"
 
 def query_ceac_state_safe(loc, case_no, info):
     retry = 0
     while retry < 5:
-        req = requests.post(URL, json=[[loc,case_no,info]], timeout=10)
-        if ret:
+        req = requests.post(URL, json=[[loc,case_no,info]], timeout=30)
+        if req.status_code == 200:
             break
         retry += 1
     ret = req.json()

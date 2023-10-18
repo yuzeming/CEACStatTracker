@@ -1,6 +1,14 @@
 {
     "configurations": [
         {
+            "name": "Python: CEAC-Serverless",
+            "type": "python",
+            "request": "launch",
+            "program": "CEAC-Serverless/index.py",
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
             "name": "Python: Flask",
             "type": "python",
             "request": "launch",

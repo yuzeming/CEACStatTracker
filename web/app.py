@@ -136,9 +136,9 @@ def index():
 
 @app.route("/register", methods=["POST"])
 def register():
-    case_no = request.form.get("case_no",None)
-    location = request.form.get("location",None)
-    info = request.form.get("info",None)
+    case_no = request.json.get("case_no",None)
+    location = request.json.get("location",None)
+    info = request.json.get("info",None)
     if not case_no:
         return jsonify({"status":"error", "error":"Invaild case no"})
     if Case.objects(case_no=case_no, info__ne= None).count() == 1:
@@ -185,9 +185,9 @@ def detail_page(case_id):
             case.interview_date = datetime.datetime.strptime(interview_date,"%Y-%m-%d")
         case.save()
     record_list = Record.objects(case=case).order_by('-status_date')
-    if case.info is None and case.state != "Issued":
+    if case.info is None and case.last_update.status != "Issued":
         flash("Please register again and complete the passport number and surname. You don't need to delete this old case.", category="warning")
-    return render_template("detail.html", case=case, record_list=record_list, location_str = LocationDict[case.location])
+    return render_template("detail.html", case=case, record_list=record_list, location_str=LocationDict[case.location])
 
 @app.route("/stat.js")
 def stat_result():

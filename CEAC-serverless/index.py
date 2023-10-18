@@ -1,7 +1,6 @@
 from typing import Dict, List
 import requests
-import hashlib
-import time
+import os
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin
 from pprint import pprint
@@ -12,19 +11,18 @@ from PIL import Image
 import string
 from io import BytesIO
 import logging
-import time
 import json
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives import hashes
-
+from cryptography.hazmat.primitives import serialization, hashes
+import base64
 logger = logging.getLogger()
 
 characters = '-' + string.digits + string.ascii_uppercase
 width, height, n_len, n_classes = 200, 50, 6, len(characters)
 
+private_key_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "private_key.pem")
 private_key = serialization.load_pem_private_key(
-    open('private_key.pem', 'rb').read(),
+    open(private_key_path, 'rb').read(),
     password=None,
 )
 
@@ -37,12 +35,13 @@ def decode(sequence):
         s += a[-1]
     return s
 
+captcha_onnx = os.path.join(os.path.dirname(os.path.realpath(__file__)), "captcha.onnx")
+ORT_SESS = ort.InferenceSession(captcha_onnx, providers=['CPUExecutionProvider'])
 
 def pred(img_content):
     img = np.asarray( Image.open(BytesIO(img_content)) ,dtype=np.float32) / 255.0
     img = np.expand_dims(np.transpose(img,(2,0,1)), axis=0)
-    ort_sess = ort.InferenceSession('captcha.onnx')
-    outputs = ort_sess.run(None, {'input': img})
+    outputs = ORT_SESS.run(None, {'input': img})
     x = outputs[0]
     t = np.argmax( np.transpose(x,(1,0,2)), -1)
     pred = decode(t[0])
@@ -114,7 +113,7 @@ def query_ceac_state_safe(loc, case_no, info, soup=None):
     #decrypt addition_info by RSA
     try:
         plaintext = private_key.decrypt(
-            info,
+            base64.b64decode(info),
             padding.OAEP(
                 mgf=padding.MGF1(algorithm=hashes.SHA256()),
                 algorithm=hashes.SHA256(),
@@ -139,8 +138,9 @@ def query_ceac_state_safe(loc, case_no, info, soup=None):
 
 
 def main_handler(event, context):
-    req = json.loads(event.body)
+    req = json.loads(event["body"])
     ret = {}
+    soup = None
     for loc, case_no, info in req:
         result, soup = query_ceac_state_safe(loc, case_no, info, soup)
         ret[case_no] = result
@@ -153,7 +153,7 @@ class TestProxyHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         """Respond to a GET request."""
         event = {
-            "body":self.rfile.read()
+            "body":self.rfile.read(int(self.headers["Content-Length"])).decode(),
         }
         context = {}
         ret = main_handler(event, context)
@@ -161,6 +161,8 @@ class TestProxyHandler(BaseHTTPRequestHandler):
         self.send_header("Content-type", "application/json")
         self.end_headers()
         self.wfile.write(ret.encode())
+        self.wfile.flush()
+        return
 
 def run(server_class=HTTPServer, handler_class=TestProxyHandler):
     server_address = ('', 8000)
@@ -170,3 +172,13 @@ def run(server_class=HTTPServer, handler_class=TestProxyHandler):
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     run()
+
+# def test():
+#     logging.basicConfig(level=logging.INFO)
+#     loc = "BEJ"
+#     case_no = "AA00A38G49"
+#     info = "vCGK/uopJta8UicG223ySZ6OnzYUp3dZAUTFw/Jzi9VulsVY1CNUy2NOZ4Bl2859tPu68nvWKVuWAHbPHfwPXpsshiWBCdwsdfFfC7GnrtERvdK8boghJ9m/7QStJz/rIQEHTw5K0GI7OY2XGbuXjB85I9cbcA5ppSfZuSKxYBkq4+vk9nMGOvsMEX09Bg4BqFhWSNkW/pgdm2jntFgT6Xzi00e1mPWv8chdgEiqhmp5C/tJLkcu9A5KqVTnlIRan3ytMkMIaslerqrKggMPtjBeNwCTlOY/9lyyYOsV8qK/qFjf2CtPL2TFaPHycIOKLP3caB0F2/+d/CD3PF+IRQ=="
+#     print(query_ceac_state_safe(loc, case_no, info))
+
+# if __name__ == "__main__":
+#     test()
