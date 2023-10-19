@@ -40,11 +40,15 @@
     It's only decrypted at the Serverless Cloud Function runtime to query your visa update. <br>
     This informaton will be deleted after your visa is issued.
   </div>
+  <div class="mb-3">
   <button class="btn btn-primary" type="button" id="reg_submit">
     <span class="spinner-border spinner-border-sm" aria-hidden="true" hidden id="reg_spinner"></span>
     <span role="status">Register</span>
   </button>
-  
+  </div>
+  <div class="mb-3">
+    <div id="liveAlertPlaceholder"></div>
+  </div>
 </form>
 
   {%include "stat.html" %}
@@ -127,6 +131,17 @@
       return encrypted;
     }
 
+    function appendAlert(message, type) {
+      const wrapper = document.createElement('div')
+      wrapper.innerHTML = [
+        `<div class="alert alert-${type} alert-dismissible" role="alert">`,
+        `   <div>${message}</div>`,
+        '   <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>',
+        '</div>'
+      ].join('')
+      $("#liveAlertPlaceholder").append(wrapper)
+    }
+
     async function submit_form(event) {
     var formData = {
       case_no: $("#case_no").val(),
@@ -139,12 +154,13 @@
     xhr.setRequestHeader("Content-Type", "application/json");
     xhr.onreadystatechange = () => {
     if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
-      console.log(xhr.responseText);
     let data = JSON.parse(xhr.responseText);
     if (data.status == "success") {
       window.location.href = "/detail/" + data.case_id;
     } else {
-      alert(data.message);
+      appendAlert(data.error,"danger");
+      $("#reg_submit").removeClass('disabled');
+      $("#reg_spinner").attr("hidden", "hidden");
     }
     }};
     xhr.send(JSON.stringify(formData));
@@ -152,11 +168,10 @@
 
   $("#reg_submit").click(async (event) => {
     event.preventDefault();
-    $("#reg_submit").disabled = true;
+    $("#reg_submit").addClass('disabled');
     $("#reg_spinner").removeAttr("hidden");
     await submit_form(event)
-    $("#reg_submit").disabled = false;
-    $("#reg_spinner").attr("hidden", "hidden");
+
   });
   </script>
 {% endblock %}

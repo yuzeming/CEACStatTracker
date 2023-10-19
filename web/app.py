@@ -8,7 +8,7 @@ import mongoengine
 
 from mongoengine.queryset.base import CASCADE
 from werkzeug.utils import redirect
-import click
+import time
 import requests
 from .location_list import LocationDict, LocationList
 from .wechat import get_qr_code_url, config as wx_config, check_wx_signature, xmltodict, wechat_msg_push
@@ -32,7 +32,7 @@ def parse_date(date_string):
     return datetime.datetime.strptime(date_string,"%d-%b-%Y").date()
 
 
-URL = os.environ.get("REMOTE_URL") or "http://127.0.0.1:8000"
+URL = os.environ.get("REMOTE_URL") or "http://127.0.0.1:9000"
 
 def query_ceac_state_safe(loc, case_no, info):
     retry = 0
@@ -45,6 +45,9 @@ def query_ceac_state_safe(loc, case_no, info):
         except Exception as e:
             pass
         retry += 1
+        time.sleep(1)
+    if req is None:
+        return "Server Error"
     return req.json()[case_no]
 
 

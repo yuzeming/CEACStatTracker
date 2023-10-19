@@ -15,6 +15,7 @@ import json
 from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import serialization, hashes
 import base64
+import time
 logger = logging.getLogger()
 
 characters = '-' + string.digits + string.ascii_uppercase
@@ -93,7 +94,13 @@ def query_ceac_state(loc, case_no, passport_number, surname, data=None):
     resp = s.post(URL,data)
     soup = BeautifulSoup(resp.text, features="html.parser")
 
-    error_text = soup.find(id="ctl00_ContentPlaceHolder1_ValidationSummary1").text.strip()
+    error_tag = soup.find(id="ctl00_ContentPlaceHolder1_ValidationSummary1")
+    if error_tag is None:
+        # Request Rejected
+        # Second captcha and just retry
+        return ERR_CAPTCHA, None
+
+    error_text = error_tag.text.strip()
     if error_text:
         return error_text, None
 
@@ -130,10 +137,14 @@ def query_ceac_state_safe(loc, case_no, info, soup=None):
             result, soup = query_ceac_state(loc, case_no, passport_number, surname, data)
             logger.info("Info!,%s-%s: %s",loc, case_no, result)
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             logger.error("Error!,%s-%s: %s",loc, case_no, e)
             return str(e), None
         if result != ERR_CAPTCHA:
             break
+        else:
+            time.sleep(1)
     return result, soup
 
 
@@ -164,8 +175,18 @@ class TestProxyHandler(BaseHTTPRequestHandler):
         self.wfile.flush()
         return
 
+    def do_GET(self):
+        """Respond to a GET request."""
+        self.send_response(200)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+        self.wfile.write(b"It works!")
+        self.wfile.flush()
+        return
+
+
 def run(server_class=HTTPServer, handler_class=TestProxyHandler):
-    server_address = ('', 8000)
+    server_address = ('', 9000)
     httpd = server_class(server_address, handler_class)
     httpd.serve_forever()
 

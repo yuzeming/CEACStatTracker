@@ -138,3 +138,5 @@ dmypy.json
 cython_debug/
 
 wx_config.yaml
+web/public.pem
+CEAC-serverless/private_key.pem

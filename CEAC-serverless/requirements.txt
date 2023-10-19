@@ -1,14 +1,6 @@
 beautifulsoup4
-bs4
-certifi
-charset-normalizer
-flatbuffers
-idna
 numpy
 onnxruntime
 Pillow
-protobuf
 requests
-soupsieve
-urllib3
 cryptography
