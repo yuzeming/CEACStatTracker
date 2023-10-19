@@ -5,7 +5,7 @@ import os
 import yaml
 from hashlib import sha1
 
-config_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "config.yaml")
+config_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "wx_config.yaml")
 if os.path.exists(config_path):
     config = yaml.safe_load(open(config_path))
 

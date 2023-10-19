@@ -10,7 +10,7 @@
 </form>
 
 <h2>Register</h2>
-<form method="POST" id="reg_form">
+<form>
   <div class="mb-3">
     <label for="case_no" class="form-label">Application No.</label>
     <input class="form-control" placeholder="AA00ABC123" id="case_no" name="case_no"  value="{{ case_no }}" required=required>
@@ -23,6 +23,9 @@
         {% endfor %}
       </select>
   </div>
+  <div class="form-text">
+    NOTE: For applicants who completed their forms prior to January 1, 2022, please put NA into the Passport and Surname fields.
+  </div>
   <div class="mb-3">
     <label for="passport_number">Passport Number</label>
     <input class="form-control" placeholder="E01234567" id="passport_number" required=required>
@@ -32,12 +35,16 @@
     <input class="form-control" placeholder="ZHANG" id="surname" required=required>
   </div>
   <div class="form-text">
-    All fields are required. 
-    The passport number and surname are encrypted by <a href="https://en.wikipedia.org/wiki/RSA_(cryptosystem)">RSA</a> and stored in the database. 
-    It's only decrypted at the Serverless Cloud Function runtime to query your visa update.
+    <b>All fields are required.</b> <br>
+    The passport number and surname are encrypted by <a href="https://en.wikipedia.org/wiki/RSA_(cryptosystem)">RSA</a> and stored in the database. <br>
+    It's only decrypted at the Serverless Cloud Function runtime to query your visa update. <br>
     This informaton will be deleted after your visa is issued.
   </div>
-  <input type="submit" class="btn btn-primary" value="Register">
+  <button class="btn btn-primary" type="button" id="reg_submit">
+    <span class="spinner-border spinner-border-sm" aria-hidden="true" hidden id="reg_spinner"></span>
+    <span role="status">Register</span>
+  </button>
+  
 </form>
 
   {%include "stat.html" %}
@@ -57,10 +64,14 @@
   {% endblock %}
   {% block script %}
   <script type="text/javascript">
-    new QRCode(document.getElementById("qrcode-wechat"), "wxp://f2f0P_8XQa9F4qFUtmHdEjeImSTKYx4xzmS_");
+    new QRCode(document.getElementById("qrcode-wechat"), "wxp://f2f0AaPgo9604etm4OqGeGUkKpdnvmRfXw3ZCZzBZi_2gNc");
     new QRCode(document.getElementById("qrcode-alipay"), "https://qr.alipay.com/fkx14657go56sbmhu01swe9");
     $(document).ready(function() {
-      $('.location-select').select2();
+      $('.location-select').select2(
+        {
+          theme: 'bootstrap-5',
+        }
+      );
     });
 
     const pemEncodedKey = `{{PUBLIC_KEY}}`;
@@ -139,11 +150,13 @@
     xhr.send(JSON.stringify(formData));
   }
 
-  $("#reg_form").submit(async (event) => {
+  $("#reg_submit").click(async (event) => {
     event.preventDefault();
-    $("#reg_form").disabled = true;
+    $("#reg_submit").disabled = true;
+    $("#reg_spinner").removeAttr("hidden");
     await submit_form(event)
-    $("#reg_form").disabled = false
+    $("#reg_submit").disabled = false;
+    $("#reg_spinner").attr("hidden", "hidden");
   });
   </script>
 {% endblock %}

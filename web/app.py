@@ -8,8 +8,8 @@ import mongoengine
 
 from mongoengine.queryset.base import CASCADE
 from werkzeug.utils import redirect
-
-from .tracker_remote import query_ceac_state_remote, query_ceac_state_safe
+import click
+import requests
 from .location_list import LocationDict, LocationList
 from .wechat import get_qr_code_url, config as wx_config, check_wx_signature, xmltodict, wechat_msg_push
 
@@ -30,6 +30,29 @@ STAT_RESULT_CACHE_MAX_AGE = 300
 
 def parse_date(date_string):
     return datetime.datetime.strptime(date_string,"%d-%b-%Y").date()
+
+
+URL = os.environ.get("REMOTE_URL") or "http://127.0.0.1:8000"
+
+def query_ceac_state_safe(loc, case_no, info):
+    retry = 0
+    req = None
+    while retry < 5:
+        try:
+            req = requests.post(URL, json=[[loc,case_no,info]], timeout=30)
+            if req.status_code == 200:
+                break
+        except Exception as e:
+            pass
+        retry += 1
+    return req.json()[case_no]
+
+
+def query_ceac_state_batch(req_data):
+    req = requests.post(URL, json=req_data, timeout=180)
+    ret = req.json()
+    return ret
+
 
 class Case(mongoengine.Document):
     case_no = mongoengine.StringField(max_length=20, unique=True)
@@ -109,16 +132,21 @@ def divide_chunks(l, n):
     for i in range(0, len(l), n): 
         yield l[i:i + n]
 
+
+@app.cli.command('watch')
 def crontab_task_remote():
-    last_seem_expire = datetime.datetime.now() - datetime.timedelta(hours=4)
-    case_list : List[Case] = Case.objects(expire_date__gte=datetime.datetime.today(), last_seem__lte=last_seem_expire, info__ne=None)
-    for chunk in divide_chunks(case_list,20):
-        req_data = [(case.location, case.case_no, case.info) for case in chunk]
-        result_dict = query_ceac_state_remote(req_data)
-        for case in chunk:
-            result = result_dict[case.case_no]
-            if isinstance(result, list):
-                case.updateRecord(result)
+    import time
+    while True:
+        last_seem_expire = datetime.datetime.now() - datetime.timedelta(hours=4)
+        case_list : List[Case] = Case.objects(expire_date__gte=datetime.datetime.today(), last_seem__lte=last_seem_expire, info__ne=None)
+        for chunk in divide_chunks(case_list,20):
+            req_data = [(case.location, case.case_no, case.info) for case in chunk]
+            result_dict = query_ceac_state_batch(req_data)
+            for case in chunk:
+                result = result_dict[case.case_no]
+                if isinstance(result, list):
+                    case.updateRecord(result)
+        time.sleep(12*60)
 
 
 @app.route("/", methods=["GET", "POST"])
