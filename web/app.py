@@ -133,21 +133,17 @@ def divide_chunks(l, n):
         yield l[i:i + n]
 
 
-@app.cli.command('watch')
-def crontab_task_remote():
-    import time
-    while True:
-        last_seem_expire = datetime.datetime.now() - datetime.timedelta(hours=4)
-        case_list : List[Case] = Case.objects(expire_date__gte=datetime.datetime.today(), last_seem__lte=last_seem_expire, info__ne=None)
-        for chunk in divide_chunks(case_list,20):
-            req_data = [(case.location, case.case_no, case.info) for case in chunk]
-            result_dict = query_ceac_state_batch(req_data)
-            for case in chunk:
-                result = result_dict[case.case_no]
-                if isinstance(result, list):
-                    case.updateRecord(result)
-        time.sleep(12*60)
-
+@app.cli.command('sync')
+def crontab_task():
+    last_seem_expire = datetime.datetime.now() - datetime.timedelta(hours=4)
+    case_list : List[Case] = Case.objects(expire_date__gte=datetime.datetime.today(), last_seem__lte=last_seem_expire, info__ne=None)
+    for chunk in divide_chunks(case_list,20):
+        req_data = [(case.location, case.case_no, case.info) for case in chunk]
+        result_dict = query_ceac_state_batch(req_data)
+        for case in chunk:
+            result = result_dict[case.case_no]
+            if isinstance(result, list):
+                case.updateRecord(result)
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -158,7 +154,7 @@ def index():
             case = Case.objects(case_no=case_no).first()
             return redirect("detail/"+str(case.id))
         else:
-            flash("No such case, Register First?", category="danger")
+            flash("No such case, register first?", category="danger")
     return render_template("index.html",case_no=case_no, LocationList=LocationList, PUBLIC_KEY=PUBLIC_KEY)
 
 
