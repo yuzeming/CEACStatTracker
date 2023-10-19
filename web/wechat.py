@@ -5,6 +5,8 @@ import os
 import yaml
 from hashlib import sha1
 
+
+config = {}
 config_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "wx_config.yaml")
 if os.path.exists(config_path):
     config = yaml.safe_load(open(config_path))
@@ -35,7 +37,7 @@ def get_access_token():
         raise Exception(ret["errmsg"])
     config["accessToken"] = ret["access_token"]
     config["tokenExpires"] = timedelta(seconds=ret["expires_in"] - 300) + datetime.now()
-    yaml.dump(config, open("config.yaml","w"))
+    #yaml.dump(config, open(config_path ,"w"))
 
     return config["accessToken"]
 

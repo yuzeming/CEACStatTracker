@@ -8,12 +8,20 @@
 <p><b>Case No: </b> {{ case.case_no }}<br>
 <b>Location: </b>{{location_str}} ({{ case.location }})<br>
 <b>Case Created: </b>{{ case.created_date }}<br>
-<b>Case Last Seen: </b>{{ case.last_seem.strftime('%Y-%m-%d %X') }}</p>
+<b>Case Last Seen: </b>{{ case.last_seem.strftime('%Y-%m-%d %X') }}<br>
 
+{% if case.info %}
+<i class="bi bi-database-lock"></i> We store your Passport Number and Surname encrypted in database.
+{% else %}
+<i class="bi bi-database-check"></i> Your Passport Number and Surname has been removed from database.
+{% endif %}
+</p>
+{% if case.last_update.status != "Issued" and case.info %}
 <form method="POST">
     <input type="hidden" name="act" value="refresh">
     <input type="submit" value="Refresh now" class="btn btn-primary">
 </form>
+{% endif %}
 
 {% if case.expire_date %}
 <h2>Auto Refresh Expire</h2>
