@@ -5,16 +5,32 @@ ENV DOCKER_BUILDKIT=1
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends --allow-unauthenticated \
-    wget libcurl4 openssl liblzma5 supervisor \
+    wget libcurl4 openssl liblzma5 supervisor nginx\
     python3-pip python3-dev python3-setuptools build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-RUN wget https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-ubuntu2204-6.0.8.tgz \
+RUN wget https://fastdl.mongodb.org/linux/mongodb-linux-x86_64-ubuntu2204-7.0.2.tgz \
     && mkdir -p /app/mongodb \
-    && tar -C /app/mongodb -zxvf mongodb-linux-x86_64-ubuntu2204-6.0.8.tgz --strip-components=1  \
+    && tar -C /app/mongodb -zxvf mongodb-linux-x86_64-ubuntu2204-7.0.2.tgz --strip-components=1  \
     && ln -s  /app/mongodb/bin/* /usr/local/bin/ \
-    && rm mongodb-linux-x86_64-ubuntu2204-6.0.8.tgz
+    && rm mongodb-linux-x86_64-ubuntu2204-7.0.2.tgz
 
-COPY supervisord.conf /etc/supervisor/supervisord.conf
+
 COPY web /app/web
+COPY uwsgi.py /app
+COPY uwsgi.ini /app
 RUN pip3 install --no-cache-dir -r /app/web/requirements.txt
+COPY supervisord.conf /etc/supervisor/supervisord.conf
+COPY nginx.conf /etc/nginx/sites-enabled/default
+RUN mkdir -p /data/mongodb
+RUN mkdir -p /var/log/mongodb
+
+ENV FLASK_APP=/app/web/app.py
+
+VOLUME [ "/data" ]
+VOLUME [ "/var/log" ]
+
+EXPOSE 8433
+
+ENTRYPOINT ["/usr/bin/supervisord", "-n", "-c", "/etc/supervisor/supervisord.conf"]
+

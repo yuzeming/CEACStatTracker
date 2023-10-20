@@ -2,3 +2,4 @@ Flask
 mongoengine
 PyYAML
 requests
+pyuwsgi

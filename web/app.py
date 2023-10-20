@@ -138,15 +138,25 @@ def divide_chunks(l, n):
 
 @app.cli.command('sync')
 def crontab_task():
-    last_seem_expire = datetime.datetime.now() - datetime.timedelta(hours=4)
-    case_list : List[Case] = Case.objects(expire_date__gte=datetime.datetime.today(), last_seem__lte=last_seem_expire, info__ne=None)
-    for chunk in divide_chunks(case_list,20):
-        req_data = [(case.location, case.case_no, case.info) for case in chunk]
-        result_dict = query_ceac_state_batch(req_data)
-        for case in chunk:
-            result = result_dict[case.case_no]
-            if isinstance(result, list):
-                case.updateRecord(result)
+    import time, random
+    while True:
+        try:
+            print("Start sync at", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+            last_seem_expire = datetime.datetime.now() - datetime.timedelta(hours=4)
+            case_list : List[Case] = Case.objects(expire_date__gte=datetime.datetime.today(), last_seem__lte=last_seem_expire, info__ne=None)
+            for chunk in divide_chunks(case_list, 10):
+                req_data = [(case.location, case.case_no, case.info) for case in chunk]
+                print("Querying", [case.case_no for case in chunk])
+                result_dict = query_ceac_state_batch(req_data)
+                for case in chunk:
+                    result = result_dict[case.case_no]
+                    print("Updating", case.case_no, result)
+                    if isinstance(result, list):
+                        case.updateRecord(result)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+        time.sleep(60* random.randint(10,20))
 
 @app.route("/", methods=["GET", "POST"])
 def index():
