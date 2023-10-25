@@ -290,6 +290,7 @@ def wechat_point():
     if request.method == "GET":
         return request.args.get("echostr")
 
+    msg = ""
     req = xmltodict(request.data)
     EventKey = ""
     if req["MsgType"] == "event" and req["Event"] == "subscribe" and "EventKey" in req and req["EventKey"]:
@@ -300,7 +301,24 @@ def wechat_point():
     if EventKey:
         Case.bind(EventKey, req["FromUserName"])
 
-    return ""
+    if req["MsgType"] == "text":
+        case_list = [case.case_no for case in Case.objects(push_channel=req["FromUserName"])]
+        case_list_str = "\n".join(case_list)
+        msg = f"""\
+<xml>
+  <ToUserName><![CDATA[{req["FromUserName"]}]]></ToUserName>
+  <FromUserName><![CDATA[{req["ToUserName"]}]]></FromUserName>
+  <CreateTime>{ int(time.time()) }</CreateTime>
+  <MsgType><![CDATA[text]]></MsgType>
+  <Content><![CDATA[绑定到这个微信号的推送：(共{len(case_list)}个)\n){ case_list_str }]]></Content>
+</xml>
+"""
+        if req["Content"] == "test":
+            wechat_msg_push(req["FromUserName"], 
+                            keyword1="测试推送", keyword2="测试推送", 
+                            remark="测试推送", first="测试推送", msg_url="https://track.moyu.ac.cn/")
+
+    return msg
 
 if __name__ == '__main__':
     app.run()
