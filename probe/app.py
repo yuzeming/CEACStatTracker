@@ -151,8 +151,8 @@ def handler(event, context):
     if not event["body"]:
         return {
             "statusCode": 400,
-            "headers": {"Content-Type": "application/json"},
-            "body": "Need josn in body",
+            "headers": {"Content-Type": "text/html"},
+            "body": "Need json in body",
         }
     req = json.loads(event["body"])
     ret = {}

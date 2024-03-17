@@ -4,3 +4,4 @@ onnxruntime
 Pillow
 requests
 cryptography
+awslambdaric
