@@ -6,11 +6,9 @@ import mangum
 from typing import List, Optional
 from flask import Flask, request, flash, abort, make_response, jsonify
 from flask.templating import render_template
-import mongoengine
 
-from mongoengine.queryset.base import CASCADE
 from werkzeug.utils import redirect
-from sqlalchemy import Select, create_engine, Column, Integer, String, Date, ForeignKey
+from sqlalchemy import Select, create_engine
 from sqlalchemy.orm import relationship, Session, DeclarativeBase, mapped_column, Mapped
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -330,7 +328,7 @@ def wechat_point():
         if req["Content"] == "test":
             wechat_push_msg(req["FromUserName"], 
                             keyword1="测试推送", keyword2="测试推送", 
-                            remark="测试推送", first="测试推送", msg_url="https://track.moyu.ac.cn/")
+                            remark="测试推送", first="测试推送", msg_url=HOST)
 
     return msg
 
@@ -338,4 +336,4 @@ if __name__ == '__main__':
     app.run()
 
 
-handler = mangum.Mangum(app)
+#handler = mangum.Mangum(app)
