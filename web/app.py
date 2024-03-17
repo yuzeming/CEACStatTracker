@@ -328,7 +328,7 @@ def wechat_point():
         Case.bind(EventKey, req["FromUserName"])
 
     if req["MsgType"] == "text":
-        case_list = [case.case_no for case in Case.objects(push_channel=req["FromUserName"])]
+        case_list = [f"{case.case_no}[{case.last_update.status}]" for case in Case.objects(push_channel=req["FromUserName"])]
         case_list_str = "\n".join(case_list)
         msg = f"""\
 <xml>
@@ -336,7 +336,7 @@ def wechat_point():
   <FromUserName><![CDATA[{req["ToUserName"]}]]></FromUserName>
   <CreateTime>{ int(time.time()) }</CreateTime>
   <MsgType><![CDATA[text]]></MsgType>
-  <Content><![CDATA[绑定到这个微信号的推送：(共{len(case_list)}个)\n){ case_list_str }]]></Content>
+  <Content><![CDATA[绑定到这个微信号的推送：(共{len(case_list)}个)\n{ case_list_str }]]></Content>
 </xml>
 """
         if req["Content"] == "test":

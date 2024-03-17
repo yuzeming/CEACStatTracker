@@ -32,8 +32,8 @@ def xmltodict(xml_string):
 def get_access_token():
     if config.get("accessToken","") and config["tokenExpires"] > datetime.now():
         return config["accessToken"]
-    url = "https://api.weixin.qq.com/cgi-bin/token"
-    ret = requests.get(url, {"grant_type": "client_credential", "appid": appID, "secret":  appSecret}).json()
+    url = "https://api.weixin.qq.com/cgi-bin/stable_token"
+    ret = requests.post(url, json={"grant_type": "client_credential", "appid": appID, "secret":  appSecret}).json()
     if "errcode" in ret:
         raise Exception(ret["errmsg"])
     config["accessToken"] = ret["access_token"]
