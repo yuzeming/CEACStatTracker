@@ -8,7 +8,7 @@ from flask import Flask, request, flash, abort, make_response, jsonify
 from flask.templating import render_template
 
 from werkzeug.utils import redirect
-from sqlalchemy import Select, create_engine
+from sqlalchemy import Integer, Select, String, create_engine, ForeignKey, DateTime
 from sqlalchemy.orm import relationship, Session, DeclarativeBase, mapped_column, Mapped
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -59,25 +59,36 @@ def query_ceac_state_batch(req_data):
 class Base(DeclarativeBase):
     pass
 
+class Record(Base):
+    __tablename__ = "record"
+    id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, index=True, default=uuid.uuid4
+    )
+    case_id:Mapped[uuid.UUID] = mapped_column(UUID, ForeignKey("case.id"))
+    status_date :Mapped[datetime.date] = mapped_column(DateTime)
+    status :Mapped[str] = mapped_column()
+    message :Mapped[str] = mapped_column()
+
 class Case(Base):
     __tablename__ = "case"
     id: Mapped[uuid.UUID] = mapped_column(
         primary_key=True, index=True, default=uuid.uuid4
     )
-    case_no :Mapped[str]  = mapped_column(unique=True)
-    location :Mapped[str] = mapped_column(max_length=5, choice=LocationList)
-    last_update :Mapped["Record"] = mapped_column(foreign_key="Record")
+    case_no :Mapped[str]  = mapped_column(unique=True, index=True)
+    location :Mapped[str] = mapped_column(String(3))
+    last_update_id :Mapped[uuid.UUID] = mapped_column(ForeignKey("record.id"))
+    last_update :Mapped[Optional[Record]] = relationship(foreign_keys="Case.last_update_id", uselist=False)
     created_date :Mapped[datetime.date] = mapped_column(default=datetime.datetime.now)
     last_check :Mapped[datetime.datetime] = mapped_column()
-    info :Mapped[str] = mapped_column(max_length=1000) # to store the encrypted personal info
+    info :Mapped[str] = mapped_column() # to store the encrypted personal info
 
-    push_channel :Mapped[str] = mapped_column(max_length=50)
-    qr_code_url :Mapped[str] = mapped_column(max_length=100)
+    push_channel :Mapped[str] = mapped_column()
+    qr_code_url :Mapped[str] = mapped_column()
     qr_code_expire :Mapped[datetime.datetime] = mapped_column()
     expire_date :Mapped[datetime.date] = mapped_column()
     interview_date :Mapped[Optional[datetime.date]] = mapped_column()
 
-    record_list :Mapped[List["Record"]] = relationship(cascade="all, delete-orphan", order_by="record.status_date.desc()", back_populates="case_id")
+    record_list :Mapped[List["Record"]] = relationship(cascade="delete-orphan", order_by="desc(Record.status_date)", foreign_keys="Record.case_id")
 
     def updateRecord(self, result, push_msg=True):
         self.last_check = datetime.datetime.now()
@@ -134,13 +145,6 @@ class Case(Base):
         session.commit()
         case.push_msg(first="签证状态的更新会推送到这里")
 
-class Record(Base):
-    __tablename__ = "record"
-    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    case_id:Mapped[UUID] = mapped_column(foreign_key="case.id")
-    status_date :Mapped[datetime.date] = mapped_column()
-    status :Mapped[str] = mapped_column(max_length=20)
-    message :Mapped[str] = mapped_column(max_length=1000)
 
 def divide_chunks(l, n):
     for i in range(0, len(l), n): 
@@ -170,12 +174,18 @@ def crontab_task():
             traceback.print_exc()
         time.sleep(60* random.randint(10,20))
 
+@app.route("/init_db")
+def init_db():
+    Base.metadata.create_all(db)
+    return "OK"
+
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     case_no = ""
     if request.method == "POST":
         case_no = request.form.get("case_no","")
-        if case:
+        if case_no:
             stmt = Select(Case).where(Case.case_no == case_no)
             case = session.scalars(stmt).first()
             if case:
@@ -183,7 +193,6 @@ def index():
         else:
             flash("No such case, register first?", category="danger")
     return render_template("index.html",case_no=case_no, LocationList=LocationList, PUBLIC_KEY=PUBLIC_KEY)
-
 
 @app.route("/register", methods=["POST"])
 def register():

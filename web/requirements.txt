@@ -1,5 +1,6 @@
 Flask
-mongoengine
+sqlalchemy
 PyYAML
 requests
-pyuwsgi
+mangum
+cryptography
