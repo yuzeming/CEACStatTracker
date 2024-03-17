@@ -10,8 +10,6 @@ appSecret = os.environ.get("appSecret")
 tempID = os.environ.get("tempID")
 serverToken = os.environ.get("serverToken")
 
-config = {}
-
 def check_wx_signature(signature, timestamp, nonce, token = serverToken):
     if not signature or not timestamp or not nonce or not token:
         return False
@@ -30,17 +28,11 @@ def xmltodict(xml_string):
     return dict(ret)
 
 def get_access_token():
-    if config.get("accessToken","") and config["tokenExpires"] > datetime.now():
-        return config["accessToken"]
     url = "https://api.weixin.qq.com/cgi-bin/stable_token"
     ret = requests.post(url, json={"grant_type": "client_credential", "appid": appID, "secret":  appSecret}).json()
     if "errcode" in ret:
         raise Exception(ret["errmsg"])
-    config["accessToken"] = ret["access_token"]
-    config["tokenExpires"] = timedelta(seconds=ret["expires_in"] - 300) + datetime.now()
-    #yaml.dump(config, open(config_path ,"w"))
-
-    return config["accessToken"]
+    return ret["access_token"]
 
 '''
 ArFK9lrJ57rW4t4QQ6bqtdt8IFsLFZkLlPfrHI5hlCo
