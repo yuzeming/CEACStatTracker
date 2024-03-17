@@ -19,12 +19,13 @@ from .wechat import wechat_get_qr_code_url, check_wx_signature, xmltodict, wecha
 
 
 app = Flask(__name__)
+app.secret_key = "secret_key"
 db = create_engine(os.environ.get("DATABASE_URL") or "sqlite:///app.db")
-session = Session(db)
+db_session = Session(db)
 
 HOST = os.environ.get("HOST",  "https://track.moyu.ac.cn/detail/")
 PUBLIC_KEY = os.environ.get("PUBLIC_KEY")
-URL = os.environ.get("REMOTE_URL")
+REMOTE_URL = os.environ.get("REMOTE_URL")
 
 EXTENT_DAYS = 120
 # STAT_RESULT_CACHE = None
@@ -39,7 +40,7 @@ def query_ceac_state_safe(loc, case_no, info):
     req = None
     while retry < 5:
         try:
-            req = requests.post(URL, json=[[loc,case_no,info]], timeout=30)
+            req = requests.post(REMOTE_URL, json=[[loc,case_no,info]], timeout=30)
             if req.status_code == 200:
                 break
         except Exception as e:
@@ -52,7 +53,7 @@ def query_ceac_state_safe(loc, case_no, info):
 
 
 def query_ceac_state_batch(req_data):
-    req = requests.post(URL, json=req_data, timeout=180)
+    req = requests.post(REMOTE_URL, json=req_data, timeout=180)
     ret = req.json()
     return ret
 
@@ -76,23 +77,25 @@ class Case(Base):
     )
     case_no :Mapped[str]  = mapped_column(unique=True, index=True)
     location :Mapped[str] = mapped_column(String(3))
-    last_update_id :Mapped[uuid.UUID] = mapped_column(ForeignKey("record.id"))
-    last_update :Mapped[Optional[Record]] = relationship(foreign_keys="Case.last_update_id", uselist=False)
     created_date :Mapped[datetime.date] = mapped_column(default=datetime.datetime.now)
     last_check :Mapped[datetime.datetime] = mapped_column()
     info :Mapped[str] = mapped_column() # to store the encrypted personal info
 
-    push_channel :Mapped[str] = mapped_column()
-    qr_code_url :Mapped[str] = mapped_column()
-    qr_code_expire :Mapped[datetime.datetime] = mapped_column()
-    expire_date :Mapped[datetime.date] = mapped_column()
+    push_channel :Mapped[Optional[str]] = mapped_column()
+    qr_code_url :Mapped[Optional[str]] = mapped_column()
+    qr_code_expire :Mapped[Optional[datetime.datetime]] = mapped_column()
+    expire_date :Mapped[Optional[datetime.date]] = mapped_column()
     interview_date :Mapped[Optional[datetime.date]] = mapped_column()
 
-    record_list :Mapped[List["Record"]] = relationship(cascade="delete-orphan", order_by="desc(Record.status_date)", foreign_keys="Record.case_id")
+    record_list :Mapped[List["Record"]] = relationship(cascade="all, delete-orphan", order_by="desc(Record.status_date)", foreign_keys="Record.case_id")
+
+    @property
+    def last_update(self):
+        return self.record_list[0] if self.record_list else None
 
     def updateRecord(self, result, push_msg=True):
         self.last_check = datetime.datetime.now()
-        session.commit()
+        db_session.commit()
         status, _, status_date, message = result
         status_date = parse_date(status_date)
         if self.last_update != None and \
@@ -102,16 +105,15 @@ class Case(Base):
             # no update needed
             return
         new_record = Record(case_id=self.id, status_date=status_date, status=status, message=message)
-        session.add(new_record)
-        session.commit()
-        session.refresh(new_record)
-        self.last_update = new_record
+        db_session.add(new_record)
+        db_session.commit()
+        db_session.refresh(new_record)
         if status == "Issued":
             # mark as expired now
             self.expire_date = None
             # delete the encrypted personal info
             self.info = None
-        session.commit()
+        db_session.commit()
         if self.push_channel and push_msg:
             self.push_msg()
 
@@ -132,17 +134,18 @@ class Case(Base):
         if self.qr_code_expire is None or datetime.datetime.now() > self.qr_code_expire:
             self.qr_code_url = wechat_get_qr_code_url(str(self.id))
             self.qr_code_expire = datetime.datetime.now() + datetime.timedelta(seconds=2592000)
-            session.commit()
+            db_session.commit()
         return self.qr_code_url
         
     @staticmethod
     def bind(case_id, wx_userid):
-        stmt = Select(Case).where(Case.id == case_id)
-        case = session.scalars(stmt).first()
+        uuid_case_id = uuid.UUID(case_id)
+        stmt = Select(Case).where(Case.id == uuid_case_id)
+        case: Case = db_session.scalars(stmt).first()
         if not case:
             return 
         case.push_channel = wx_userid
-        session.commit()
+        db_session.commit()
         case.push_msg(first="签证状态的更新会推送到这里")
 
 
@@ -157,9 +160,9 @@ def crontab_task():
     while True:
         try:
             print("Start sync at", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-            last_seem_expire = datetime.datetime.now() - datetime.timedelta(hours=4)
-            stmt = Select(Case).where(Case.expire_date >= datetime.datetime.today(), Case.last_seem <= last_seem_expire, Case.info != None)
-            case_list : List[Case] = session.scalars(stmt).all()
+            last_check_expire = datetime.datetime.now() - datetime.timedelta(hours=4)
+            stmt = Select(Case).where(Case.expire_date >= datetime.datetime.today(), Case.last_check <= last_check_expire, Case.info != None)
+            case_list : List[Case] = db_session.scalars(stmt).all()
             for chunk in divide_chunks(case_list, 10):
                 req_data = [(case.location, case.case_no, case.info) for case in chunk]
                 print("Querying", [case.case_no for case in chunk])
@@ -187,11 +190,11 @@ def index():
         case_no = request.form.get("case_no","")
         if case_no:
             stmt = Select(Case).where(Case.case_no == case_no)
-            case = session.scalars(stmt).first()
+            case = db_session.scalars(stmt).first()
             if case:
                 return redirect("detail/"+str(case.id))
-        else:
-            flash("No such case, register first?", category="danger")
+            else:
+                flash("No such case, register first?", category="danger")
     return render_template("index.html",case_no=case_no, LocationList=LocationList, PUBLIC_KEY=PUBLIC_KEY)
 
 @app.route("/register", methods=["POST"])
@@ -207,28 +210,30 @@ def register():
     if isinstance(result,str):
         return jsonify({"status":"error", "error":result})
     stmt = Select(Case).where(Case.case_no == case_no)
-    case = session.scalars(stmt).first()
+    case = db_session.scalars(stmt).first()
     if case: # update the old case add info
         case.location = location
         case.info = info
     else:
         case = Case(case_no=case_no,location=location, created_date=parse_date(result[1]), info=info)
-        session.add(case)
+        db_session.add(case)
     case.updateRecord(result)
     case.renew()
-    session.commit()
+    db_session.commit()
     return jsonify({"status":"success", "case_id":str(case.id)})
 
 @app.route("/detail/<case_id>", methods=["GET", "POST"])
 def detail_page(case_id):
-    stmt = Select(Case).where(Case.id == case_id)
-    case = session.scalars(stmt).first()
+    uuid_case_id = uuid.UUID(case_id)
+    stmt = Select(Case).where(Case.id == uuid_case_id)
+    case = db_session.scalars(stmt).first()
     if case is None:
         return abort(404)
     if request.method == "POST":
         act = request.form.get("act",None)
         if act == "delete":
-            case.delete()
+            db_session.delete(case)
+            db_session.commit()
             flash("Completely deleted this case, See you.", category="success")
             return redirect("/")
         if act == "renew":
@@ -243,7 +248,7 @@ def detail_page(case_id):
         interview_date = request.form.get("interview_date",None)
         if interview_date:
             case.interview_date = datetime.datetime.strptime(interview_date,"%Y-%m-%d")
-        session.commit()
+        db_session.commit()
     if case.info is None and case.last_update.status != "Issued":
         flash("Please register again and complete the passport number and surname. You don't need to delete this old case.", category="warning")
     return render_template("detail.html", case=case, record_list=case.record_list, location_str=LocationDict[case.location])

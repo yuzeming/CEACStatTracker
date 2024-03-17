@@ -49,9 +49,9 @@ class DebugProbe(SimpleHTTPRequestHandler):
         for loc, case_no, info in req:
             passport_number, surname = decrypt(info)
             ret[case_no] = (
-                "DEBUG_INFO_"+str(datetime.datetime.timestamp()) ,
-                datetime.date(2024,1,1),
-                datetime.date.today(),
+                "DEBUG_INFO_"+str(datetime.datetime.now()) ,
+                datetime.datetime.strftime(datetime.date(2024,1,1),"%d-%b-%Y"),
+                datetime.datetime.strftime(datetime.date.today(),"%d-%b-%Y"),
                 "DEBUG_%s_%s_%s_%s" %(loc,case_no,passport_number,surname)
             )
         
