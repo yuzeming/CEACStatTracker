@@ -12,19 +12,12 @@ import string
 from io import BytesIO
 import logging
 import json
-from cryptography.hazmat.primitives.asymmetric import rsa, padding
-from cryptography.hazmat.primitives import serialization, hashes
 import base64
 import time
 logger = logging.getLogger()
 
 characters = '-' + string.digits + string.ascii_uppercase
 width, height, n_len, n_classes = 200, 50, 6, len(characters)
-
-private_key = serialization.load_pem_private_key(
-    os.environ["PRIVATE_KEY"].encode(),
-    password=None,
-)
 
 def decode(sequence):
     a = ''.join([characters[x] for x in sequence])
@@ -115,21 +108,7 @@ def query_ceac_state(loc, case_no, passport_number, surname, data=None):
     return (status,SubmitDate,StatusDate,Message), soup
 
 
-def query_ceac_state_safe(loc, case_no, info, soup=None):
-    #decrypt addition_info by RSA
-    try:
-        plaintext = private_key.decrypt(
-            base64.b64decode(info),
-            padding.OAEP(
-                mgf=padding.MGF1(algorithm=hashes.SHA256()),
-                algorithm=hashes.SHA256(),
-                label=None
-            )
-        )
-        passport_number, surname = plaintext.decode().split(",")
-    except Exception as e:
-        return ERR_DECRYPT, None
-    
+def query_ceac_state_safe(loc, case_no, passport_number, surname, soup=None):
     for _ in range(5):
         try:
             data = get_post_data(soup)
@@ -157,8 +136,8 @@ def handler(event, context):
     req = json.loads(event["body"])
     ret = {}
     soup = None
-    for loc, case_no, info in req:
-        result, soup = query_ceac_state_safe(loc, case_no, info, soup)
+    for loc, case_no, passport_number, surname in req:
+        result, soup = query_ceac_state_safe(loc, case_no, passport_number, surname, soup)
         ret[case_no] = result
     return {
             "statusCode": 200,

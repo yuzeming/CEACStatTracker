@@ -2,7 +2,6 @@ import datetime
 import json
 import os
 import uuid
-import mangum
 from typing import List, Optional
 from flask import Flask, request, flash, abort, make_response, jsonify
 from flask.templating import render_template
@@ -19,12 +18,11 @@ from .wechat import wechat_get_qr_code_url, check_wx_signature, xmltodict, wecha
 
 
 app = Flask(__name__)
-app.secret_key = "secret_key"
+app.secret_key = 'os.environ.get("SECRET_KEY")'
 db = create_engine(os.environ.get("DATABASE_URL") or "sqlite:///app.db")
 db_session = Session(db)
 
 HOST = os.environ.get("HOST",  "https://track.moyu.ac.cn/detail/")
-PUBLIC_KEY = os.environ.get("PUBLIC_KEY")
 REMOTE_URL = os.environ.get("REMOTE_URL")
 
 EXTENT_DAYS = 120
@@ -35,12 +33,12 @@ EXTENT_DAYS = 120
 def parse_date(date_string):
     return datetime.datetime.strptime(date_string,"%d-%b-%Y").date()
 
-def query_ceac_state_safe(loc, case_no, info):
+def query_ceac_state_safe(loc, case_no, passport_number, surname):
     retry = 0
     req = None
     while retry < 5:
         try:
-            req = requests.post(REMOTE_URL, json=[[loc,case_no,info]], timeout=30)
+            req = requests.post(REMOTE_URL, json=[[loc, case_no, passport_number, surname]], timeout=30)
             if req.status_code == 200:
                 break
         except Exception as e:
@@ -79,7 +77,8 @@ class Case(Base):
     location :Mapped[str] = mapped_column(String(3))
     created_date :Mapped[datetime.date] = mapped_column(default=datetime.datetime.now)
     last_check :Mapped[datetime.datetime] = mapped_column()
-    info :Mapped[str] = mapped_column() # to store the encrypted personal info
+    passport_number :Mapped[Optional[str]] = mapped_column()
+    surname :Mapped[Optional[str]] = mapped_column()
 
     push_channel :Mapped[Optional[str]] = mapped_column()
     qr_code_url :Mapped[Optional[str]] = mapped_column()
@@ -109,10 +108,9 @@ class Case(Base):
         db_session.commit()
         db_session.refresh(new_record)
         if status == "Issued":
-            # mark as expired now
             self.expire_date = None
-            # delete the encrypted personal info
-            self.info = None
+            self.passport_number = None
+            self.surname = None
         db_session.commit()
         if self.push_channel and push_msg:
             self.push_msg()
@@ -161,10 +159,10 @@ def crontab_task():
         try:
             print("Start sync at", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
             last_check_expire = datetime.datetime.now() - datetime.timedelta(hours=4)
-            stmt = Select(Case).where(Case.expire_date >= datetime.datetime.today(), Case.last_check <= last_check_expire, Case.info != None)
+            stmt = Select(Case).where(Case.expire_date >= datetime.datetime.today(), Case.last_check <= last_check_expire, Case.passport_number != None)
             case_list : List[Case] = db_session.scalars(stmt).all()
             for chunk in divide_chunks(case_list, 10):
-                req_data = [(case.location, case.case_no, case.info) for case in chunk]
+                req_data = [(case.location, case.case_no, case.passport_number, case.surname) for case in chunk]
                 print("Querying", [case.case_no for case in chunk])
                 result_dict = query_ceac_state_batch(req_data)
                 for case in chunk:
@@ -201,21 +199,23 @@ def index():
 def register():
     case_no = request.json.get("case_no",None)
     location = request.json.get("location",None)
-    info = request.json.get("info",None)
+    passport_number = request.json.get("passport_number",None)
+    surname = request.json.get("surname",None)
     if not case_no:
         return jsonify({"status":"error", "error":"Invaild case no"})
     if not location or location not in LocationDict.keys() :
         return jsonify({"status":"error", "error":"Invaild location"})
-    result = query_ceac_state_safe(location, case_no, info)
+    result = query_ceac_state_safe(location, case_no, passport_number, surname)
     if isinstance(result,str):
         return jsonify({"status":"error", "error":result})
     stmt = Select(Case).where(Case.case_no == case_no)
     case = db_session.scalars(stmt).first()
-    if case: # update the old case add info
+    if case: # update the old case
         case.location = location
-        case.info = info
+        case.passport_number = passport_number
+        case.surname = surname
     else:
-        case = Case(case_no=case_no,location=location, created_date=parse_date(result[1]), info=info)
+        case = Case(case_no=case_no,location=location, created_date=parse_date(result[1]), passport_number=passport_number, surname=surname)
         db_session.add(case)
     case.updateRecord(result)
     case.renew()
@@ -239,8 +239,8 @@ def detail_page(case_id):
         if act == "renew":
             flash(f"Expire +{EXTENT_DAYS} days", category="success")
             case.renew()
-        if act == "refresh" and case.info is not None:
-            result = query_ceac_state_safe(case.location,case.case_no,case.info)
+        if act == "refresh" and case.passport_number is not None:
+            result = query_ceac_state_safe(case.location,case.case_no,case.passport_number, case.surname)
             if isinstance(result,str):
                 flash(result, category="danger")
             else:
@@ -249,7 +249,7 @@ def detail_page(case_id):
         if interview_date:
             case.interview_date = datetime.datetime.strptime(interview_date,"%Y-%m-%d")
         db_session.commit()
-    if case.info is None and case.last_update.status != "Issued":
+    if case.passport_number is None and case.last_update.status != "Issued":
         flash("Please register again and complete the passport number and surname. You don't need to delete this old case.", category="warning")
     return render_template("detail.html", case=case, record_list=case.record_list, location_str=LocationDict[case.location])
 
@@ -348,6 +348,3 @@ def wechat_point():
 
 if __name__ == '__main__':
     app.run()
-
-
-#handler = mangum.Mangum(app)
