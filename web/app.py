@@ -5,7 +5,6 @@ import uuid
 from typing import List, Optional
 from flask import Flask, request, flash, abort, make_response, jsonify
 from flask.templating import render_template
-
 from werkzeug.utils import redirect
 from sqlalchemy import Integer, Select, String, create_engine, ForeignKey, DateTime
 from sqlalchemy.orm import relationship, Session, DeclarativeBase, mapped_column, Mapped
@@ -14,15 +13,16 @@ from sqlalchemy.dialects.postgresql import UUID
 import time
 import requests
 from .location_list import LocationDict, LocationList
-from .wechat import wechat_get_qr_code_url, check_wx_signature, xmltodict, wechat_push_msg
-
+# from .wechat import wechat_get_qr_code_url, check_wx_signature, xmltodict, wechat_push_msg
 
 app = Flask(__name__)
 app.secret_key = 'os.environ.get("SECRET_KEY")'
-db = create_engine(os.environ.get("DATABASE_URL") or "sqlite:///app.db")
+#DB_URL = os.environ.get("DATABASE_URL")
+DB_URL = f"postgresql://{os.environ.get("POSTGRES_USER")}:{os.environ.get("POSTGRES_PASSWORD")}@{os.environ.get("POSTGRES_HOST")}:{os.environ.get("POSTGRES_PORT")}/{os.environ.get("POSTGRES_DB")}" 
+db = create_engine(DB_URL)
 db_session = Session(db)
 
-HOST = os.environ.get("HOST",  "https://track.moyu.ac.cn/detail/")
+HOST = os.environ.get("HOST", "https://track.moyu.ac.cn/detail/")
 REMOTE_URL = os.environ.get("REMOTE_URL")
 
 EXTENT_DAYS = 120
@@ -125,15 +125,16 @@ class Case(Base):
         keyword1 = self.case_no
         keyword2 = self.last_update.status
         remark = self.last_update.message
-        wechat_push_msg(self.push_channel, msg_url=HOST+str(self.id),
-            first=first, keyword1=keyword1, keyword2=keyword2, remark=remark)
+        # wechat_push_msg(self.push_channel, msg_url=HOST+str(self.id),
+        #     first=first, keyword1=keyword1, keyword2=keyword2, remark=remark)
 
     def get_qr_code_url(self):
-        if self.qr_code_expire is None or datetime.datetime.now() > self.qr_code_expire:
-            self.qr_code_url = wechat_get_qr_code_url(str(self.id))
-            self.qr_code_expire = datetime.datetime.now() + datetime.timedelta(seconds=2592000)
-            db_session.commit()
-        return self.qr_code_url
+        return "DISABLED"
+        # if self.qr_code_expire is None or datetime.datetime.now() > self.qr_code_expire:
+        #     self.qr_code_url = wechat_get_qr_code_url(str(self.id))
+        #     self.qr_code_expire = datetime.datetime.now() + datetime.timedelta(seconds=2592000)
+        #     db_session.commit()
+        # return self.qr_code_url
         
     @staticmethod
     def bind(case_id, wx_userid):
@@ -193,7 +194,7 @@ def index():
                 return redirect("detail/"+str(case.id))
             else:
                 flash("No such case, register first?", category="danger")
-    return render_template("index.html",case_no=case_no, LocationList=LocationList, PUBLIC_KEY=PUBLIC_KEY)
+    return render_template("index.html",case_no=case_no, LocationList=LocationList)
 
 @app.route("/register", methods=["POST"])
 def register():
@@ -306,45 +307,45 @@ def detail_page(case_id):
 #     return response
 
 
-@app.route('/endpoint', methods=["GET","POST"])
-def wechat_point():
-    if not check_wx_signature(
-        request.args.get("signature"), 
-        request.args.get("timestamp"), 
-        request.args.get("nonce")):
-        return abort(500)
-    if request.method == "GET":
-        return request.args.get("echostr")
+# @app.route('/endpoint', methods=["GET","POST"])
+# def wechat_point():
+#     if not check_wx_signature(
+#         request.args.get("signature"), 
+#         request.args.get("timestamp"), 
+#         request.args.get("nonce")):
+#         return abort(500)
+#     if request.method == "GET":
+#         return request.args.get("echostr")
 
-    msg = ""
-    req = xmltodict(request.data)
-    EventKey = ""
-    if req["MsgType"] == "event" and req["Event"] == "subscribe" and "EventKey" in req and req["EventKey"]:
-        EventKey = req["EventKey"][8:]  #qrscene_
-    if req["MsgType"] == "event" and req["Event"] == "SCAN":
-        EventKey = req["EventKey"]
+#     msg = ""
+#     req = xmltodict(request.data)
+#     EventKey = ""
+#     if req["MsgType"] == "event" and req["Event"] == "subscribe" and "EventKey" in req and req["EventKey"]:
+#         EventKey = req["EventKey"][8:]  #qrscene_
+#     if req["MsgType"] == "event" and req["Event"] == "SCAN":
+#         EventKey = req["EventKey"]
 
-    if EventKey:
-        Case.bind(EventKey, req["FromUserName"])
+#     if EventKey:
+#         Case.bind(EventKey, req["FromUserName"])
 
-    if req["MsgType"] == "text":
-        case_list = [f"{case.case_no}[{case.last_update.status}]" for case in Case.objects(push_channel=req["FromUserName"])]
-        case_list_str = "\n".join(case_list)
-        msg = f"""\
-<xml>
-  <ToUserName><![CDATA[{req["FromUserName"]}]]></ToUserName>
-  <FromUserName><![CDATA[{req["ToUserName"]}]]></FromUserName>
-  <CreateTime>{ int(time.time()) }</CreateTime>
-  <MsgType><![CDATA[text]]></MsgType>
-  <Content><![CDATA[绑定到这个微信号的推送：(共{len(case_list)}个)\n{ case_list_str }]]></Content>
-</xml>
-"""
-        if req["Content"] == "test":
-            wechat_push_msg(req["FromUserName"], 
-                            keyword1="测试推送", keyword2="测试推送", 
-                            remark="测试推送", first="测试推送", msg_url=HOST)
+#     if req["MsgType"] == "text":
+#         case_list = [f"{case.case_no}[{case.last_update.status}]" for case in Case.objects(push_channel=req["FromUserName"])]
+#         case_list_str = "\n".join(case_list)
+#         msg = f"""\
+# <xml>
+#   <ToUserName><![CDATA[{req["FromUserName"]}]]></ToUserName>
+#   <FromUserName><![CDATA[{req["ToUserName"]}]]></FromUserName>
+#   <CreateTime>{ int(time.time()) }</CreateTime>
+#   <MsgType><![CDATA[text]]></MsgType>
+#   <Content><![CDATA[绑定到这个微信号的推送：(共{len(case_list)}个)\n{ case_list_str }]]></Content>
+# </xml>
+# """
+#         if req["Content"] == "test":
+#             wechat_push_msg(req["FromUserName"], 
+#                             keyword1="测试推送", keyword2="测试推送", 
+#                             remark="测试推送", first="测试推送", msg_url=HOST)
 
-    return msg
+#     return msg
 
 if __name__ == '__main__':
     app.run()

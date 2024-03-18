@@ -7,8 +7,9 @@ from hashlib import sha1
 
 appID = os.environ.get("appID")
 appSecret = os.environ.get("appSecret")
-tempID = os.environ.get("tempID")
 serverToken = os.environ.get("serverToken")
+tempID = os.environ.get("tempID") or "ArFK9lrJ57rW4t4QQ6bqtdt8IFsLFZkLlPfrHI5hlCo"
+
 
 def check_wx_signature(signature, timestamp, nonce, token = serverToken):
     if not signature or not timestamp or not nonce or not token:
