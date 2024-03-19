@@ -103,6 +103,9 @@ class ComputeStack(Stack):
                 "REMOTE_URL": self.apigw.url,
             },
             secrets = secretts,
+            health_check = ecs.HealthCheck(
+                command = ["curl -f http://localhost/health || exit 1"],
+            ),
         )
 
         fargate_service = ecs_patterns.ApplicationLoadBalancedFargateService(
