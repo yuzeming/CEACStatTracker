@@ -3,3 +3,4 @@ sqlalchemy
 PyYAML
 requests
 pyuwsgi
+psycopg2
