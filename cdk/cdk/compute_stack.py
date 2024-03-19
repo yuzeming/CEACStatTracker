@@ -103,6 +103,9 @@ class ComputeStack(Stack):
                 "REMOTE_URL": self.apigw.url,
             },
             secrets = secretts,
+            health_check = ecs.HealthCheck(
+                command = ["curl -f http://localhost/health/ || exit 1"],
+            ),
         )
 
         fargate_service = ecs_patterns.ApplicationLoadBalancedFargateService(
@@ -119,4 +122,3 @@ class ComputeStack(Stack):
         fargate_service.service.connections.allow_to(
             props.aurora_db, ec2.Port.tcp(5432), "DB access"
         )
-        
