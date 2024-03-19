@@ -115,3 +115,8 @@ class ComputeStack(Stack):
             certificate = props.network_backend_certificate,
             redirect_http = True,
         )
+
+        fargate_service.service.connections.allow_to(
+            props.aurora_db, ec2.Port.tcp(5432), "DB access"
+        )
+        

@@ -12,11 +12,12 @@ from sqlalchemy.dialects.postgresql import UUID
 
 import time
 import requests
-from .location_list import LocationDict, LocationList
+from location_list import LocationDict, LocationList
 # from .wechat import wechat_get_qr_code_url, check_wx_signature, xmltodict, wechat_push_msg
 
 app = Flask(__name__)
 app.secret_key = 'os.environ.get("SECRET_KEY")'
+#DB_URL = "sqlite:////tmp/ceac.sqlite"
 #DB_URL = os.environ.get("DATABASE_URL")
 DB_URL = f"postgresql://{os.environ.get("POSTGRES_USER")}:{os.environ.get("POSTGRES_PASSWORD")}@{os.environ.get("POSTGRES_HOST")}:{os.environ.get("POSTGRES_PORT")}/{os.environ.get("POSTGRES_DB")}" 
 db = create_engine(DB_URL)
