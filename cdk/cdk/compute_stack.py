@@ -104,7 +104,7 @@ class ComputeStack(Stack):
             },
             secrets = secretts,
             health_check = ecs.HealthCheck(
-                command = ["curl -f http://localhost/health/ || exit 1"],
+                command = ["curl -f http://localhost/health || exit 1"],
             ),
         )
 
