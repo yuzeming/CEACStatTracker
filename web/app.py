@@ -17,9 +17,10 @@ from location_list import LocationDict, LocationList
 
 app = Flask(__name__)
 app.secret_key = 'os.environ.get("SECRET_KEY")'
-#DB_URL = "sqlite:////tmp/ceac.sqlite"
+DB_URL = "sqlite:////tmp/ceac.sqlite"
 #DB_URL = os.environ.get("DATABASE_URL")
-DB_URL = f"postgresql://{os.environ.get("POSTGRES_USER")}:{os.environ.get("POSTGRES_PASSWORD")}@{os.environ.get("POSTGRES_HOST")}:{os.environ.get("POSTGRES_PORT")}/{os.environ.get("POSTGRES_DB")}" 
+if os.environ.get("POSTGRES_USER"):
+    DB_URL = f"postgresql://{os.environ.get("POSTGRES_USER")}:{os.environ.get("POSTGRES_PASSWORD")}@{os.environ.get("POSTGRES_HOST")}:{os.environ.get("POSTGRES_PORT")}/{os.environ.get("POSTGRES_DB")}" 
 db = create_engine(DB_URL)
 db_session = Session(db)
 
@@ -184,7 +185,7 @@ def init_db():
 
 
 @app.route("/health")
-def init_db():
+def health():
     return "OK"
 
 @app.route("/", methods=["GET", "POST"])
