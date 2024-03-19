@@ -4,11 +4,11 @@ import os
 import aws_cdk as cdk
 from cdk.util import PROJECT_NAME
 
-from cdk.cdk.compute_stack import ComputeStack
-from cdk.cdk.dns_stack import DnsStack
-from cdk.cdk.network_stack import NetworkStack
-from cdk.cdk.data_stack import DataStack
-from cdk.cdk.util import Props, PROJECT_NAME, CDK_DEFAULT_ACCOUNT
+from cdk.compute_stack import ComputeStack
+from cdk.dns_stack import DnsStack
+from cdk.network_stack import NetworkStack
+from cdk.data_stack import DataStack
+from cdk.util import Props, PROJECT_NAME, CDK_DEFAULT_ACCOUNT
 
 
 

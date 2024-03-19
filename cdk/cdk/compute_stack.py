@@ -86,7 +86,7 @@ class ComputeStack(Stack):
             ),
         )
 
-        self.aurora_db.grant_data_api_access(self.fargate_task_definition.task_role)
+        props.aurora_db.grant_data_api_access(self.fargate_task_definition.task_role)
 
         self.fargate_task_definition.add_container(
             f"{PROJECT_NAME}-app-container",
