@@ -122,4 +122,3 @@ class ComputeStack(Stack):
         fargate_service.service.connections.allow_to(
             props.aurora_db, ec2.Port.tcp(5432), "DB access"
         )
-        

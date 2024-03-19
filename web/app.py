@@ -183,6 +183,10 @@ def init_db():
     return "OK"
 
 
+@app.route("/health")
+def init_db():
+    return "OK"
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     case_no = ""
