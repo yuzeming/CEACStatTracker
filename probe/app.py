@@ -129,7 +129,7 @@ def query_ceac_state_safe(loc, case_no, passport_number, surname, soup=None):
 def handler(event, context):
     if not event["body"]:
         return {
-            "statusCode": 400,
+            "statusCode": 200,
             "headers": {"Content-Type": "text/html"},
             "body": "Need json in body",
         }
