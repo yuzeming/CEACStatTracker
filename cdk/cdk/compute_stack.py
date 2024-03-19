@@ -49,21 +49,21 @@ class ComputeStack(Stack):
         # )
 
         # probe
-        self.probe_lambda = lambda_.Function(
-            self, f"{PROJECT_NAME}-probe-lambda",
-            runtime=lambda_.Runtime.FROM_IMAGE,
-            handler=lambda_.Handler.FROM_IMAGE,
-            code=lambda_.EcrImageCode.from_asset_image("../probe"),
-            timeout=Duration.seconds(300),
-            architecture=lambda_.Architecture.X86_64,
-            memory_size=1024,
-        )
+        # self.probe_lambda = lambda_.Function(
+        #     self, f"{PROJECT_NAME}-probe-lambda",
+        #     runtime=lambda_.Runtime.FROM_IMAGE,
+        #     handler=lambda_.Handler.FROM_IMAGE,
+        #     code=lambda_.EcrImageCode.from_asset_image("../probe"),
+        #     timeout=Duration.seconds(300),
+        #     architecture=lambda_.Architecture.X86_64,
+        #     memory_size=1024,
+        # )
 
-        self.apigw = apigw_.LambdaRestApi(
-            self,
-            f"{PROJECT_NAME}-probe-apigw",
-            handler=self.probe_lambda,
-        )
+        # self.apigw = apigw_.LambdaRestApi(
+        #     self,
+        #     f"{PROJECT_NAME}-probe-apigw",
+        #     handler=self.probe_lambda,
+        # )
 
         # Web Fargate 
         secretts = {}
@@ -100,9 +100,12 @@ class ComputeStack(Stack):
             environment = {
                 "PRODUCTION": "true",
                 "DEBUG": "false",
-                "REMOTE_URL": self.apigw.url,
+                # "REMOTE_URL": self.apigw.url,
             },
             secrets = secretts,
+            health_check = ecs.HealthCheck(
+                command = ["curl -f http://localhost/health/ || exit 1"],
+            ),
         )
 
         fargate_service = ecs_patterns.ApplicationLoadBalancedFargateService(
