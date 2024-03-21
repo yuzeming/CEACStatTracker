@@ -40,7 +40,7 @@ class DataStack(Stack):
                 subnet_type=ec2.SubnetType.PRIVATE_ISOLATED
             ),
             # Database name yoctogram
-            default_database_name="yoctogram",
+            default_database_name="ceacstatetracker",
             # Database credentials generated for you within Secrets Manager, with username yoctogram
             # Exclude special characters from the credentials (conveniently, this string is defined for you as settings.DB_SPECIAL_CHARS_EXCLUDE)
             credentials=rds.Credentials.from_generated_secret(

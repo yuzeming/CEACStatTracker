@@ -113,7 +113,7 @@ class ComputeStack(Stack):
             f"{PROJECT_NAME}-fargate-service",
             cluster=cluster,
             task_definition = self.fargate_task_definition,
-            domain_name = "ceac.bettyyw.infracourse.cloud",
+            domain_name = "ceac.moyu.ac.cn",
             domain_zone = props.network_hosted_zone,
             certificate = props.network_backend_certificate,
             redirect_http = True,
