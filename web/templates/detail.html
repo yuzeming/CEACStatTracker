@@ -1,22 +1,22 @@
 {% extends "base.html" %}
 {% block head %}
 <h1 class="project-name">{{ case.last_update.status }}</h1>
-<h2 class="project-tagline"><b>Case Last Updated: </b>{{ case.last_update.status_date }}<br><b>Case No: </b> {{ case.case_no }}</p></h2>
+<h2 class="project-tagline"><b>Case Last Updated: </b>{{ case.last_update.status_date }}<br><b>Case No: </b> {{ case.marked_case_no }}</p></h2>
 {% endblock %}
 {% block content %}
 <h2>Case Info</h2>
-<p><b>Case No: </b> {{ case.case_no }}<br>
+<p><b>Case No: </b> {{ case.marked_case_no }}<br>
 <b>Location: </b>{{location_str}} ({{ case.location }})<br>
 <b>Case Created: </b>{{ case.created_date }}<br>
 <b>Case Last Check: </b>{{ case.last_check.strftime('%Y-%m-%d %X') }}<br>
 
-{% if case.info %}
-<i class="bi bi-database-lock"></i> We store your Passport Number and Surname encrypted in database.
+{% if case.surname %}
+<i class="bi bi-database-lock"></i> We store your Passport Number and Surname in database.
 {% else %}
 <i class="bi bi-database-check"></i> Your Passport Number and Surname has been removed from database.
 {% endif %}
 </p>
-{% if case.last_update.status != "Issued" and case.info %}
+{% if case.last_update.status != "Issued" and case.surname %}
 <form method="POST">
     <input type="hidden" name="act" value="refresh">
     <input type="submit" value="Refresh now" class="btn btn-primary">
