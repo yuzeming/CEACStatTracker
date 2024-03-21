@@ -10,6 +10,8 @@ appSecret = os.environ.get("appSecret")
 serverToken = os.environ.get("serverToken")
 tempID = os.environ.get("tempID") or "ArFK9lrJ57rW4t4QQ6bqtdt8IFsLFZkLlPfrHI5hlCo"
 
+# if we need a proxy in ip white list to get access token
+WXAPI_URL = os.environ.get("WXAPI_URL") or "https://api.weixin.qq.com/cgi-bin/stable_token"
 
 def check_wx_signature(signature, timestamp, nonce, token = serverToken):
     if not signature or not timestamp or not nonce or not token:
@@ -28,11 +30,17 @@ def xmltodict(xml_string):
     ret = [(child.tag, child.text) for child in root]
     return dict(ret)
 
+access_token = None
+expires_in = None
 def get_access_token():
-    url = "https://api.weixin.qq.com/cgi-bin/stable_token"
-    ret = requests.post(url, json={"grant_type": "client_credential", "appid": appID, "secret":  appSecret}).json()
+    global access_token, expires_in
+    if access_token and expires_in < datetime.now():
+        return access_token
+    ret = requests.post(WXAPI_URL, json={"grant_type": "client_credential", "appid": appID, "secret":  appSecret}).json()
     if "errcode" in ret:
         raise Exception(ret["errmsg"])
+    access_token = ret["access_token"]
+    expires_in = datetime.now() + timedelta(seconds=ret["expires_in"])
     return ret["access_token"]
 
 '''

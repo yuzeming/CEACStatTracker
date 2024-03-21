@@ -13,12 +13,11 @@ from sqlalchemy.dialects.postgresql import UUID
 import time
 import requests
 from location_list import LocationDict, LocationList
-# from .wechat import wechat_get_qr_code_url, check_wx_signature, xmltodict, wechat_push_msg
+from .wechat import wechat_get_qr_code_url, check_wx_signature, xmltodict, wechat_push_msg
 
 app = Flask(__name__)
 app.secret_key = 'os.environ.get("SECRET_KEY")'
 DB_URL = "sqlite:////tmp/ceac.sqlite"
-#DB_URL = os.environ.get("DATABASE_URL")
 if os.environ.get("POSTGRES_USER"):
     DB_URL = f"postgresql://{os.environ.get("POSTGRES_USER")}:{os.environ.get("POSTGRES_PASSWORD")}@{os.environ.get("POSTGRES_HOST")}:{os.environ.get("POSTGRES_PORT")}/{os.environ.get("POSTGRES_DB")}" 
 db = create_engine(DB_URL)
@@ -127,16 +126,15 @@ class Case(Base):
         keyword1 = self.case_no
         keyword2 = self.last_update.status
         remark = self.last_update.message
-        # wechat_push_msg(self.push_channel, msg_url=HOST+str(self.id),
-        #     first=first, keyword1=keyword1, keyword2=keyword2, remark=remark)
+        wechat_push_msg(self.push_channel, msg_url=HOST+str(self.id),
+            first=first, keyword1=keyword1, keyword2=keyword2, remark=remark)
 
     def get_qr_code_url(self):
-        return "DISABLED"
-        # if self.qr_code_expire is None or datetime.datetime.now() > self.qr_code_expire:
-        #     self.qr_code_url = wechat_get_qr_code_url(str(self.id))
-        #     self.qr_code_expire = datetime.datetime.now() + datetime.timedelta(seconds=2592000)
-        #     db_session.commit()
-        # return self.qr_code_url
+        if self.qr_code_expire is None or datetime.datetime.now() > self.qr_code_expire:
+            self.qr_code_url = wechat_get_qr_code_url(str(self.id))
+            self.qr_code_expire = datetime.datetime.now() + datetime.timedelta(seconds=2592000)
+            db_session.commit()
+        return self.qr_code_url
         
     @staticmethod
     def bind(case_id, wx_userid):
