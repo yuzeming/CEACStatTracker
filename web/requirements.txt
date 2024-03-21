@@ -3,4 +3,4 @@ sqlalchemy
 PyYAML
 requests
 pyuwsgi
-psycopg2
+psycopg2-binary

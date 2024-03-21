@@ -9,6 +9,7 @@ from werkzeug.utils import redirect
 from sqlalchemy import Integer, Select, String, create_engine, ForeignKey, DateTime
 from sqlalchemy.orm import relationship, Session, DeclarativeBase, mapped_column, Mapped
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import func
 
 import time
 import requests
@@ -27,9 +28,6 @@ HOST = os.environ.get("HOST", "https://track.moyu.ac.cn/detail/")
 REMOTE_URL = os.environ.get("REMOTE_URL")
 
 EXTENT_DAYS = 120
-# STAT_RESULT_CACHE = None
-# STAT_RESULT_CACHE_TIME = None
-# STAT_RESULT_CACHE_MAX_AGE = 60 # 60min
 
 def parse_date(date_string):
     return datetime.datetime.strptime(date_string,"%d-%b-%Y").date()
@@ -78,6 +76,7 @@ class Case(Base):
     location :Mapped[str] = mapped_column(String(3))
     created_date :Mapped[datetime.date] = mapped_column(default=datetime.datetime.now)
     last_check :Mapped[datetime.datetime] = mapped_column()
+    last_status : Optional[Mapped[str]] = mapped_column()
     passport_number :Mapped[Optional[str]] = mapped_column()
     surname :Mapped[Optional[str]] = mapped_column()
 
@@ -94,9 +93,9 @@ class Case(Base):
         return self.record_list[0] if self.record_list else None
 
     def updateRecord(self, result, push_msg=True):
+        status, _, status_date, message = result
         self.last_check = datetime.datetime.now()
         db_session.commit()
-        status, _, status_date, message = result
         status_date = parse_date(status_date)
         if self.last_update != None and \
             self.last_update.status_date == status_date and \
@@ -106,6 +105,7 @@ class Case(Base):
             return
         new_record = Record(case_id=self.id, status_date=status_date, status=status, message=message)
         db_session.add(new_record)
+        self.last_status = status_date
         db_session.commit()
         db_session.refresh(new_record)
         if status == "Issued":
@@ -117,7 +117,7 @@ class Case(Base):
             self.push_msg()
 
     def renew(self, days=EXTENT_DAYS):
-        if self.last_update and self.last_update.status == "Issued":
+        if self.last_status == "Issued":
             return
         self.expire_date = (datetime.datetime.today() + datetime.timedelta(days=days)).date()
 
@@ -178,9 +178,29 @@ def crontab_task():
 
 @app.route("/init_db")
 def init_db():
-    Base.metadata.create_all(db)
-    return "OK"
+    if request.form.get("pwd") == os.environ.get("POSTGRES_PASSWORD"):
+        Base.metadata.create_all(db)
+        return "OK"
+    else:
+        return "Need Pwd"
 
+@app.route("/import_case")
+def import_case():
+    if request.form.get("pwd") != os.environ.get("POSTGRES_PASSWORD"):
+        return "Need Pwd"
+    data = json.loads(request.body)
+    c = data["case"]
+    case_no = c["case_no"]
+    stmt = Select(Case).where(Case.case_no == case_no).exists()
+    if db_session.scalars(stmt):
+        return "Case no exists"
+    case = Case(
+        case_no = case_no,
+        location = c["location"],
+        
+    )
+    
+    
 
 @app.route("/health")
 def health():
@@ -258,6 +278,11 @@ def detail_page(case_id):
         flash("Please register again and complete the passport number and surname. You don't need to delete this old case.", category="warning")
     return render_template("detail.html", case=case, record_list=case.record_list, location_str=LocationDict[case.location])
 
+
+# STAT_RESULT_CACHE = None
+# STAT_RESULT_CACHE_TIME = None
+# STAT_RESULT_CACHE_MAX_AGE = 60 # 60min
+
 # @app.route("/stat.js")
 # def stat_result():
 #     global STAT_RESULT_CACHE, STAT_RESULT_CACHE_TIME
@@ -282,7 +307,7 @@ def detail_page(case_id):
 #                 }
 #             }
 #         ]
-#         result = Application.objects().aggregate(pipeline)
+#         stmt = Select(Case).where
 #         tmp = {}
 #         for line in result:
 #             date = datetime.datetime.strptime(line["_id"]["date"],"%Y-%m-%d")
@@ -305,51 +330,52 @@ def detail_page(case_id):
 #         for s in tmp:
 #             result[s] =[tmp[s].get(i,0) for i in labels]
 #         STAT_RESULT_CACHE = "STAT_RESULT = " + json.dumps(result) + ";"
+        
 #     response = make_response(STAT_RESULT_CACHE)
 #     response.headers['Cache-Control'] = f'max-age={STAT_RESULT_CACHE_MAX_AGE}'
 #     response.headers['Content-Type'] = 'application/javascript'
 #     return response
 
 
-# @app.route('/endpoint', methods=["GET","POST"])
-# def wechat_point():
-#     if not check_wx_signature(
-#         request.args.get("signature"), 
-#         request.args.get("timestamp"), 
-#         request.args.get("nonce")):
-#         return abort(500)
-#     if request.method == "GET":
-#         return request.args.get("echostr")
+@app.route('/endpoint', methods=["GET","POST"])
+def wechat_point():
+    if not check_wx_signature(
+        request.args.get("signature"), 
+        request.args.get("timestamp"), 
+        request.args.get("nonce")):
+        return abort(500)
+    if request.method == "GET":
+        return request.args.get("echostr")
 
-#     msg = ""
-#     req = xmltodict(request.data)
-#     EventKey = ""
-#     if req["MsgType"] == "event" and req["Event"] == "subscribe" and "EventKey" in req and req["EventKey"]:
-#         EventKey = req["EventKey"][8:]  #qrscene_
-#     if req["MsgType"] == "event" and req["Event"] == "SCAN":
-#         EventKey = req["EventKey"]
+    msg = ""
+    req = xmltodict(request.data)
+    EventKey = ""
+    if req["MsgType"] == "event" and req["Event"] == "subscribe" and "EventKey" in req and req["EventKey"]:
+        EventKey = req["EventKey"][8:]  #qrscene_
+    if req["MsgType"] == "event" and req["Event"] == "SCAN":
+        EventKey = req["EventKey"]
 
-#     if EventKey:
-#         Case.bind(EventKey, req["FromUserName"])
+    if EventKey:
+        Case.bind(EventKey, req["FromUserName"])
 
-#     if req["MsgType"] == "text":
-#         case_list = [f"{case.case_no}[{case.last_update.status}]" for case in Case.objects(push_channel=req["FromUserName"])]
-#         case_list_str = "\n".join(case_list)
-#         msg = f"""\
-# <xml>
-#   <ToUserName><![CDATA[{req["FromUserName"]}]]></ToUserName>
-#   <FromUserName><![CDATA[{req["ToUserName"]}]]></FromUserName>
-#   <CreateTime>{ int(time.time()) }</CreateTime>
-#   <MsgType><![CDATA[text]]></MsgType>
-#   <Content><![CDATA[绑定到这个微信号的推送：(共{len(case_list)}个)\n{ case_list_str }]]></Content>
-# </xml>
-# """
-#         if req["Content"] == "test":
-#             wechat_push_msg(req["FromUserName"], 
-#                             keyword1="测试推送", keyword2="测试推送", 
-#                             remark="测试推送", first="测试推送", msg_url=HOST)
+    if req["MsgType"] == "text":
+        case_list = [f"{case.case_no}[{case.last_update.status}]" for case in Case.objects(push_channel=req["FromUserName"])]
+        case_list_str = "\n".join(case_list)
+        msg = f"""\
+<xml>
+  <ToUserName><![CDATA[{req["FromUserName"]}]]></ToUserName>
+  <FromUserName><![CDATA[{req["ToUserName"]}]]></FromUserName>
+  <CreateTime>{ int(time.time()) }</CreateTime>
+  <MsgType><![CDATA[text]]></MsgType>
+  <Content><![CDATA[绑定到这个微信号的推送：(共{len(case_list)}个)\n{ case_list_str }]]></Content>
+</xml>
+"""
+        if req["Content"] == "test":
+            wechat_push_msg(req["FromUserName"], 
+                            keyword1="测试推送", keyword2="测试推送", 
+                            remark="测试推送", first="测试推送", msg_url=HOST)
 
-#     return msg
+    return msg
 
 if __name__ == '__main__':
     app.run()
