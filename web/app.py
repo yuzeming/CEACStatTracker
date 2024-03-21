@@ -18,7 +18,9 @@ from .wechat import wechat_get_qr_code_url, check_wx_signature, xmltodict, wecha
 
 app = Flask(__name__)
 app.secret_key = 'os.environ.get("SECRET_KEY")'
-DB_URL = "sqlite:////tmp/ceac.sqlite"
+#DB_URL = "sqlite:////tmp/ceac.sqlite"
+DB_URL = "sqlite:///ceac.sqlite"
+
 if os.environ.get("POSTGRES_USER"):
     DB_URL = f"postgresql://{os.environ.get("POSTGRES_USER")}:{os.environ.get("POSTGRES_PASSWORD")}@{os.environ.get("POSTGRES_HOST")}:{os.environ.get("POSTGRES_PORT")}/{os.environ.get("POSTGRES_DB")}" 
 db = create_engine(DB_URL)
@@ -89,6 +91,10 @@ class Case(Base):
     record_list :Mapped[List["Record"]] = relationship(cascade="all, delete-orphan", order_by="desc(Record.status_date)", foreign_keys="Record.case_id")
 
     @property
+    def marked_case_no(self):
+        return self.case_no[:3] + "****" + self.case_no[-3:]
+
+    @property
     def last_update(self):
         return self.record_list[0] if self.record_list else None
 
@@ -123,8 +129,8 @@ class Case(Base):
 
     def push_msg(self, first=None, remark=None):
         first = first or "你的签证状态有更新"
-        keyword1 = self.case_no
-        keyword2 = self.last_update.status
+        keyword1 = self.marked_case_no
+        keyword2 = self.last_status
         remark = self.last_update.message
         wechat_push_msg(self.push_channel, msg_url=HOST+str(self.id),
             first=first, keyword1=keyword1, keyword2=keyword2, remark=remark)
@@ -192,13 +198,32 @@ def import_case():
     c = data["case"]
     case_no = c["case_no"]
     stmt = Select(Case).where(Case.case_no == case_no).exists()
-    if db_session.scalars(stmt):
+    if db_session.scalars(stmt).one():
         return "Case no exists"
     case = Case(
         case_no = case_no,
         location = c["location"],
-        
+        created_date = datetime.date.fromisoformat(c["created_date"]),
+        passport_number = c["passport_number"],
+        surname = c["surname"],
+        last_check = datetime.date.fromisoformat(c["last_check"]),
+        last_status = c["last_status"],
+        interview_date = datetime.date.fromisoformat(c["interview_date"]) if c["interview_date"] else None,
+        push_channel = c["push_channel"],
     )
+    db_session.add(case)
+    db_session.commit()
+    db_session.refresh(case)
+    for r in data["record"]:
+        record = Record(
+            case_id = case.id,
+            status_date = datetime.date.fromisoformat(r["status_date"]),
+            status = r["status"],
+            message = r["message"]
+        )
+        db_session.add(record)
+    db_session.commit()
+    return "OK"
     
     
 
@@ -274,7 +299,7 @@ def detail_page(case_id):
         if interview_date:
             case.interview_date = datetime.datetime.strptime(interview_date,"%Y-%m-%d")
         db_session.commit()
-    if case.passport_number is None and case.last_update.status != "Issued":
+    if case.passport_number is None and case.last_status != "Issued":
         flash("Please register again and complete the passport number and surname. You don't need to delete this old case.", category="warning")
     return render_template("detail.html", case=case, record_list=case.record_list, location_str=LocationDict[case.location])
 
@@ -301,7 +326,7 @@ def detail_page(case_id):
 #                 "$group": {
 #                     "_id":{ 
 #                         "date": { "$dateToString": { "format": "%Y-%m-%d", "date": "$interview_date"} },
-#                         "status":"$last_update.status"
+#                         "status":"$last_status"
 #                     },
 #                     "count": {"$sum": 1}
 #                 }
@@ -359,7 +384,7 @@ def wechat_point():
         Case.bind(EventKey, req["FromUserName"])
 
     if req["MsgType"] == "text":
-        case_list = [f"{case.case_no}[{case.last_update.status}]" for case in Case.objects(push_channel=req["FromUserName"])]
+        case_list = [f"{case.marked_case_no}[{case.last_status}]" for case in Case.objects(push_channel=req["FromUserName"])]
         case_list_str = "\n".join(case_list)
         msg = f"""\
 <xml>
