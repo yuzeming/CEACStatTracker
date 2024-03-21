@@ -6,14 +6,14 @@ from typing import List, Optional
 from flask import Flask, request, flash, abort, make_response, jsonify
 from flask.templating import render_template
 from werkzeug.utils import redirect
-from sqlalchemy import Integer, Select, String, create_engine, ForeignKey, DateTime
+from sqlalchemy import Integer, Select, String, create_engine, ForeignKey, Date
 from sqlalchemy.orm import relationship, Session, DeclarativeBase, mapped_column, Mapped
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import func
 
 import time
 import requests
-from location_list import LocationDict, LocationList
+from .location_list import LocationDict, LocationList
 from .wechat import wechat_get_qr_code_url, check_wx_signature, xmltodict, wechat_push_msg
 
 app = Flask(__name__)
@@ -22,7 +22,7 @@ app.secret_key = 'os.environ.get("SECRET_KEY")'
 DB_URL = "sqlite:///ceac.sqlite"
 
 if os.environ.get("POSTGRES_USER"):
-    DB_URL = f"postgresql://{os.environ.get("POSTGRES_USER")}:{os.environ.get("POSTGRES_PASSWORD")}@{os.environ.get("POSTGRES_HOST")}:{os.environ.get("POSTGRES_PORT")}/{os.environ.get("POSTGRES_DB")}" 
+    DB_URL = f'postgresql://{os.environ.get("POSTGRES_USER")}:{os.environ.get("POSTGRES_PASSWORD")}@{os.environ.get("POSTGRES_HOST")}:{os.environ.get("POSTGRES_PORT")}/{os.environ.get("POSTGRES_DB")}' 
 db = create_engine(DB_URL)
 db_session = Session(db)
 
@@ -65,7 +65,7 @@ class Record(Base):
         primary_key=True, index=True, default=uuid.uuid4
     )
     case_id:Mapped[uuid.UUID] = mapped_column(UUID, ForeignKey("case.id"))
-    status_date :Mapped[datetime.date] = mapped_column(DateTime)
+    status_date :Mapped[datetime.date] = mapped_column(Date)
     status :Mapped[str] = mapped_column()
     message :Mapped[str] = mapped_column()
 
@@ -78,7 +78,7 @@ class Case(Base):
     location :Mapped[str] = mapped_column(String(3))
     created_date :Mapped[datetime.date] = mapped_column(default=datetime.datetime.now)
     last_check :Mapped[datetime.datetime] = mapped_column()
-    last_status : Optional[Mapped[str]] = mapped_column()
+    last_status : Mapped[Optional[str]] = mapped_column()
     passport_number :Mapped[Optional[str]] = mapped_column()
     surname :Mapped[Optional[str]] = mapped_column()
 
@@ -190,23 +190,22 @@ def init_db():
     else:
         return "Need Pwd"
 
-@app.route("/import_case")
+@app.route("/import_case", methods=["POST"])
 def import_case():
     if request.form.get("pwd") != os.environ.get("POSTGRES_PASSWORD"):
-        return "Need Pwd"
-    data = json.loads(request.body)
-    c = data["case"]
+        return "Need Pwd"   
+    c = request.json
     case_no = c["case_no"]
-    stmt = Select(Case).where(Case.case_no == case_no).exists()
-    if db_session.scalars(stmt).one():
-        return "Case no exists"
+    stmt = Select(Case.id).where(Case.case_no == case_no)
+    if db_session.scalars(stmt).first():
+        return "Case_no exists"
     case = Case(
         case_no = case_no,
         location = c["location"],
         created_date = datetime.date.fromisoformat(c["created_date"]),
         passport_number = c["passport_number"],
         surname = c["surname"],
-        last_check = datetime.date.fromisoformat(c["last_check"]),
+        last_check = datetime.datetime.fromisoformat(c["last_check"]),
         last_status = c["last_status"],
         interview_date = datetime.date.fromisoformat(c["interview_date"]) if c["interview_date"] else None,
         push_channel = c["push_channel"],
@@ -214,7 +213,7 @@ def import_case():
     db_session.add(case)
     db_session.commit()
     db_session.refresh(case)
-    for r in data["record"]:
+    for r in c["record_list"]:
         record = Record(
             case_id = case.id,
             status_date = datetime.date.fromisoformat(r["status_date"]),
