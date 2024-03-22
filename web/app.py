@@ -1,3 +1,4 @@
+from collections import defaultdict
 import datetime
 import json
 import os
@@ -23,7 +24,7 @@ DB_URL = "sqlite:///ceac.sqlite"
 
 if os.environ.get("POSTGRES_USER"):
     DB_URL = f'postgresql://{os.environ.get("POSTGRES_USER")}:{os.environ.get("POSTGRES_PASSWORD")}@{os.environ.get("POSTGRES_HOST")}:{os.environ.get("POSTGRES_PORT")}/{os.environ.get("POSTGRES_DB")}' 
-db = create_engine(DB_URL)
+db = create_engine(DB_URL, echo=True)
 db_session = Session(db)
 
 HOST = os.environ.get("HOST", "https://track.moyu.ac.cn/detail/")
@@ -87,6 +88,7 @@ class Case(Base):
     qr_code_expire :Mapped[Optional[datetime.datetime]] = mapped_column()
     expire_date :Mapped[Optional[datetime.date]] = mapped_column()
     interview_date :Mapped[Optional[datetime.date]] = mapped_column()
+    interview_week :Mapped[Optional[int]] = mapped_column() # for stat group by week
 
     record_list :Mapped[List["Record"]] = relationship(cascade="all, delete-orphan", order_by="desc(Record.status_date)", foreign_keys="Record.case_id")
 
@@ -190,39 +192,56 @@ def init_db():
     else:
         return "Need Pwd"
 
-@app.route("/import_case", methods=["POST"])
+@app.route("/import_case", methods=["GET","POST"])
 def import_case():
-    if request.form.get("pwd") != os.environ.get("POSTGRES_PASSWORD"):
-        return "Need Pwd"   
-    c = request.json
-    case_no = c["case_no"]
-    stmt = Select(Case.id).where(Case.case_no == case_no)
-    if db_session.scalars(stmt).first():
-        return "Case_no exists"
-    case = Case(
-        case_no = case_no,
-        location = c["location"],
-        created_date = datetime.date.fromisoformat(c["created_date"]),
-        passport_number = c["passport_number"],
-        surname = c["surname"],
-        last_check = datetime.datetime.fromisoformat(c["last_check"]),
-        last_status = c["last_status"],
-        interview_date = datetime.date.fromisoformat(c["interview_date"]) if c["interview_date"] else None,
-        push_channel = c["push_channel"],
-    )
-    db_session.add(case)
-    db_session.commit()
-    db_session.refresh(case)
-    for r in c["record_list"]:
-        record = Record(
-            case_id = case.id,
-            status_date = datetime.date.fromisoformat(r["status_date"]),
-            status = r["status"],
-            message = r["message"]
-        )
-        db_session.add(record)
-    db_session.commit()
-    return "OK"
+    if request.method == "GET":
+        return render_template("import_case.html")
+    if os.environ.get("POSTGRES_PASSWORD") is not None and request.form.get("pwd") != os.environ.get("POSTGRES_PASSWORD"):
+        return "Need Pwd"
+    if "file" not in request.files:
+        return "No file part"
+    file = request.files["file"]
+    case_list = json.load(file)
+    if type(case_list) == dict:
+        case_list = case_list.values()
+    def generate():
+        yield "<pre>"
+        yield "importing...\n"
+        for c in case_list:
+            case_no = c["case_no"]
+            stmt = Select(Case.id).where(Case.case_no == case_no)
+            if db_session.scalars(stmt).first():
+                yield f"{case_no}: Case_no exists\n"
+                db_session.rollback()
+                continue
+            case = Case(
+                case_no = case_no,
+                location = c["location"],
+                created_date = datetime.date.fromisoformat(c["created_date"]),
+                passport_number = c["passport_number"],
+                surname = c["surname"],
+                last_check = datetime.datetime.fromisoformat(c["last_check"]),
+                last_status = c["last_status"],
+                push_channel = c["push_channel"],
+            )
+            if c["interview_date"]:
+                case.interview_date = datetime.date.fromisoformat(c["interview_date"])
+                case.interview_week = case.interview_date.isocalendar()[0]*100 + case.interview_date.isocalendar()[1]
+            db_session.add(case)
+            db_session.commit()
+            db_session.refresh(case)
+            for r in c["record_list"]:
+                record = Record(
+                    case_id = case.id,
+                    status_date = datetime.date.fromisoformat(r["status_date"]),
+                    status = r["status"],
+                    message = r["message"]
+                )
+                db_session.add(record)
+            db_session.commit()
+            yield f"{case_no}: OK\n"
+            yield "</pre>"
+    return generate()
     
     
 
@@ -297,68 +316,48 @@ def detail_page(case_id):
         interview_date = request.form.get("interview_date",None)
         if interview_date:
             case.interview_date = datetime.datetime.strptime(interview_date,"%Y-%m-%d")
+            case.interview_week = case.interview_date.isocalendar()[0]*100 + case.interview_date.isocalendar()[1]
         db_session.commit()
     if case.passport_number is None and case.last_status != "Issued":
         flash("Please register again and complete the passport number and surname. You don't need to delete this old case.", category="warning")
     return render_template("detail.html", case=case, record_list=case.record_list, location_str=LocationDict[case.location])
 
 
-# STAT_RESULT_CACHE = None
-# STAT_RESULT_CACHE_TIME = None
-# STAT_RESULT_CACHE_MAX_AGE = 60 # 60min
+STAT_RESULT_CACHE = None
+STAT_RESULT_CACHE_TIME = None
+STAT_RESULT_CACHE_MAX_AGE = 60 # 60min
 
-# @app.route("/stat.js")
-# def stat_result():
-#     global STAT_RESULT_CACHE, STAT_RESULT_CACHE_TIME
-#     if STAT_RESULT_CACHE is None or datetime.datetime.now() - STAT_RESULT_CACHE_TIME > datetime.timedelta(minutes=STAT_RESULT_CACHE_MAX_AGE):
-#         this_week = datetime.datetime.today() - datetime.timedelta(days=datetime.datetime.today().weekday())
-#         date_range = this_week - datetime.timedelta(days=52*7)
-#         pipeline = [
-#             {   "$match": { "interview_date":{"$gte": date_range} } },
-#             {   "$lookup": { 
-#                     "from": "record",
-#                     "localField":"last_update",
-#                     "foreignField":"_id",
-#                     "as":"last_update"
-#                 }
-#             },{
-#                 "$group": {
-#                     "_id":{ 
-#                         "date": { "$dateToString": { "format": "%Y-%m-%d", "date": "$interview_date"} },
-#                         "status":"$last_status"
-#                     },
-#                     "count": {"$sum": 1}
-#                 }
-#             }
-#         ]
-#         stmt = Select(Case).where
-#         tmp = {}
-#         for line in result:
-#             date = datetime.datetime.strptime(line["_id"]["date"],"%Y-%m-%d")
-#             date -= datetime.timedelta(days=date.weekday())
-#             date = date.strftime("%m-%d")
-#             status = line["_id"]["status"][0]
-#             count = int(line["count"])
-#             if status not in tmp:
-#                 tmp[status] = {}
-#             if date not in tmp[status]:
-#                 tmp[status][date] = 0
-#             tmp[status][date] += count
+
+
+@app.route("/stat.js")
+def stat_result():
+    global STAT_RESULT_CACHE, STAT_RESULT_CACHE_TIME
+    if STAT_RESULT_CACHE is None or datetime.datetime.now() - STAT_RESULT_CACHE_TIME > datetime.timedelta(minutes=STAT_RESULT_CACHE_MAX_AGE):
+        this_week = datetime.datetime.now().isocalendar()
+        date_range = datetime.datetime.now() - datetime.timedelta(days=365)
+        week_range = date_range.isocalendar()[0]*100 + date_range.isocalendar()[1]
+        stmt = Select(func.count(),Case.last_status, Case.interview_week) \
+            .group_by(Case.last_status, Case.interview_week) \
+            .filter(Case.interview_week != None) \
+            .filter(Case.interview_week >= week_range)
+        result = db_session.execute(stmt).all()
+        stat_json = defaultdict(dict)
+        lables = set()
+        for count, status, week in result:
+            week_str = datetime.date.fromisocalendar(week//100, week%100, 1).strftime("%m-%d")
+            stat_json[status][week_str] = count
+            lables.add(week_str)
+        labels = [(this_week - datetime.timedelta(days=i*7)).strftime("%m-%d") for i in range(52)]
+        stat_json = { k: [stat_json[k].get(l,0) for l in lables] for k in stat_json.keys()}
         
-#         labels = [(this_week - datetime.timedelta(days=i*7)).strftime("%m-%d") for i in range(52)]
-#         STAT_RESULT_CACHE_TIME = datetime.datetime.now()
-#         result = {
-#             "_labels_":labels,
-#             "_update_time_":  STAT_RESULT_CACHE_TIME.strftime("%Y-%m-%d %H:%M")
-#         }
-#         for s in tmp:
-#             result[s] =[tmp[s].get(i,0) for i in labels]
-#         STAT_RESULT_CACHE = "STAT_RESULT = " + json.dumps(result) + ";"
-        
-#     response = make_response(STAT_RESULT_CACHE)
-#     response.headers['Cache-Control'] = f'max-age={STAT_RESULT_CACHE_MAX_AGE}'
-#     response.headers['Content-Type'] = 'application/javascript'
-#     return response
+        STAT_RESULT_CACHE_TIME = datetime.datetime.now()
+        stat_json["_labels_"] = lables
+        stat_json["_update_time_"]=STAT_RESULT_CACHE_TIME.strftime("%Y-%m-%d %H:%M")
+        STAT_RESULT_CACHE = "var STAT_RESULT = " + json.dumps(stat_json) + ";"
+    response = make_response(STAT_RESULT_CACHE)
+    response.headers['Cache-Control'] = f'max-age={STAT_RESULT_CACHE_MAX_AGE}'
+    response.headers['Content-Type'] = 'application/javascript'
+    return response
 
 
 @app.route('/endpoint', methods=["GET","POST"])
