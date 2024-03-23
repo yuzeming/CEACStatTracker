@@ -333,8 +333,8 @@ STAT_RESULT_CACHE_MAX_AGE = 60 # 60min
 def stat_result():
     global STAT_RESULT_CACHE, STAT_RESULT_CACHE_TIME
     if STAT_RESULT_CACHE is None or datetime.datetime.now() - STAT_RESULT_CACHE_TIME > datetime.timedelta(minutes=STAT_RESULT_CACHE_MAX_AGE):
-        this_week = datetime.datetime.now().isocalendar()
-        date_range = datetime.datetime.now() - datetime.timedelta(days=365)
+        this_week = datetime.datetime.now() - datetime.timedelta(days=datetime.datetime.now().isoweekday()-1)
+        date_range = datetime.datetime.now() - datetime.timedelta(weeks=52)
         week_range = date_range.isocalendar()[0]*100 + date_range.isocalendar()[1]
         stmt = Select(func.count(),Case.last_status, Case.interview_week) \
             .group_by(Case.last_status, Case.interview_week) \
@@ -342,16 +342,16 @@ def stat_result():
             .filter(Case.interview_week >= week_range)
         result = db_session.execute(stmt).all()
         stat_json = defaultdict(dict)
-        lables = set()
+        labels = set()
         for count, status, week in result:
             week_str = datetime.date.fromisocalendar(week//100, week%100, 1).strftime("%m-%d")
             stat_json[status][week_str] = count
-            lables.add(week_str)
+            labels.add(week_str)
         labels = [(this_week - datetime.timedelta(days=i*7)).strftime("%m-%d") for i in range(52)]
-        stat_json = { k: [stat_json[k].get(l,0) for l in lables] for k in stat_json.keys()}
+        stat_json = { k: [stat_json[k].get(l,0) for l in labels] for k in stat_json.keys()}
         
         STAT_RESULT_CACHE_TIME = datetime.datetime.now()
-        stat_json["_labels_"] = lables
+        stat_json["_labels_"] = labels
         stat_json["_update_time_"]=STAT_RESULT_CACHE_TIME.strftime("%Y-%m-%d %H:%M")
         STAT_RESULT_CACHE = "var STAT_RESULT = " + json.dumps(stat_json) + ";"
     response = make_response(STAT_RESULT_CACHE)
