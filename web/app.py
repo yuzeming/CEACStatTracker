@@ -100,29 +100,32 @@ class Case(Base):
     def last_update(self):
         return self.record_list[0] if self.record_list else None
 
-    def updateRecord(self, result, push_msg=True):
+    @staticmethod
+    def updateRecord(case_no, result, push_msg=True):
+        stmt = Select(Case).where(Case.case_no == case_no)
+        case_: Case = db_session.scalars(stmt).first()
         status, _, status_date, message = result
-        self.last_check = datetime.datetime.now()
+        case_.last_check = datetime.datetime.now()
         db_session.commit()
         status_date = parse_date(status_date)
-        if self.last_update != None and \
-            self.last_update.status_date == status_date and \
-            self.last_update.status == status and \
-            self.last_update.message == message:
+        if case_.last_update != None and \
+            case_.last_update.status_date == status_date and \
+            case_.last_update.status == status and \
+            case_.last_update.message == message:
             # no update needed
             return
-        new_record = Record(case_id=self.id, status_date=status_date, status=status, message=message)
+        new_record = Record(case_id=case_.id, status_date=status_date, status=status, message=message)
         db_session.add(new_record)
-        self.last_status = status_date
+        case_.last_status = status_date
         db_session.commit()
         db_session.refresh(new_record)
         if status == "Issued":
-            self.expire_date = None
-            self.passport_number = None
-            self.surname = None
+            case_.expire_date = None
+            case_.passport_number = None
+            case_.surname = None
         db_session.commit()
-        if self.push_channel and push_msg:
-            self.push_msg()
+        if case_.push_channel and push_msg:
+            case_.push_msg()
 
     def renew(self, days=EXTENT_DAYS):
         if self.last_status == "Issued":
@@ -161,28 +164,24 @@ def divide_chunks(l, n):
         yield l[i:i + n]
 
 
-@app.cli.command('sync')
+@app.route("/sync")
 def crontab_task():
-    import time, random
-    while True:
-        try:
-            print("Start sync at", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-            last_check_expire = datetime.datetime.now() - datetime.timedelta(hours=4)
-            stmt = Select(Case).where(Case.expire_date >= datetime.datetime.today(), Case.last_check <= last_check_expire, Case.passport_number != None)
-            case_list : List[Case] = db_session.scalars(stmt).all()
-            for chunk in divide_chunks(case_list, 10):
-                req_data = [(case.location, case.case_no, case.passport_number, case.surname) for case in chunk]
-                print("Querying", [case.case_no for case in chunk])
-                result_dict = query_ceac_state_batch(req_data)
-                for case in chunk:
-                    result = result_dict[case.case_no]
-                    print("Updating", case.case_no, result)
-                    if isinstance(result, list):
-                        case.updateRecord(result)
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-        time.sleep(60* random.randint(10,20))
+    if request.args.get("pwd") != os.environ.get("POSTGRES_PASSWORD"):
+        return "Need Pwd"
+    def generate():
+        yield "Start sync at "+ time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+        last_check_expire = datetime.datetime.now() - datetime.timedelta(hours=4)
+        stmt = Select(Case.location, Case.case_no, Case.passport_number, Case.surname).where(Case.expire_date >= datetime.datetime.today(), Case.last_check <= last_check_expire, Case.passport_number != None)
+        case_list = db_session.execute(stmt).all()
+        for req_data in divide_chunks(case_list, 10):
+            req_data = [tuple(i) for i in req_data]
+            yield "Querying" + str([case[1] for case in req_data])
+            result_dict = query_ceac_state_batch(req_data)
+            for case_no ,result in result_dict.items():
+                yield "Updating %s %s" % (case_no, result)
+                if isinstance(result, list):
+                    Case.updateRecord(case_no,result)
+    return generate()
 
 @app.route("/init_db")
 def init_db():
@@ -227,6 +226,7 @@ def import_case():
             if c["interview_date"]:
                 case.interview_date = datetime.date.fromisoformat(c["interview_date"])
                 case.interview_week = case.interview_date.isocalendar()[0]*100 + case.interview_date.isocalendar()[1]
+            case.expire_date = datetime.date.today() + datetime.timedelta(days=120) if case.last_status != "Issued" else None
             db_session.add(case)
             db_session.commit()
             db_session.refresh(case)
@@ -285,7 +285,7 @@ def register():
     else:
         case = Case(case_no=case_no,location=location, created_date=parse_date(result[1]), passport_number=passport_number, surname=surname)
         db_session.add(case)
-    case.updateRecord(result)
+    Case.updateRecord(case_no, result)
     case.renew()
     db_session.commit()
     return jsonify({"status":"success", "case_id":str(case.id)})

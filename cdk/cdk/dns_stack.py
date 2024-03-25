@@ -14,5 +14,5 @@ class DnsStack(Stack):
         self.hosted_zone = r53.HostedZone(
             self,
             f"{PROJECT_NAME}-hosted-zone",
-            zone_name="moyu.ac.cn",
+            zone_name="track.moyu.ac.cn",
         )

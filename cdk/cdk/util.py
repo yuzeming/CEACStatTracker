@@ -12,7 +12,7 @@ from aws_cdk import (
 
 PROJECT_NAME = "CEACStatTracker"
 
-CDK_DEFAULT_ACCOUNT = "941167088877"
+CDK_DEFAULT_ACCOUNT = "619809850642"
 
 
 # copy from homework
