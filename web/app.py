@@ -24,7 +24,7 @@ DB_URL = "sqlite:///ceac.sqlite"
 
 if os.environ.get("POSTGRES_USER"):
     DB_URL = f'postgresql://{os.environ.get("POSTGRES_USER")}:{os.environ.get("POSTGRES_PASSWORD")}@{os.environ.get("POSTGRES_HOST")}:{os.environ.get("POSTGRES_PORT")}/{os.environ.get("POSTGRES_DB")}' 
-db = create_engine(DB_URL, echo=True)
+db = create_engine(DB_URL, echo=app.debug)
 db_session = Session(db)
 
 HOST = os.environ.get("HOST", "https://track.moyu.ac.cn/detail/")
