@@ -7,7 +7,7 @@ from typing import List, Optional
 from flask import Flask, request, flash, abort, make_response, jsonify
 from flask.templating import render_template
 from werkzeug.utils import redirect
-from sqlalchemy import Integer, Select, String, create_engine, ForeignKey, Date
+from sqlalchemy import Integer, Select, String, create_engine, ForeignKey, Date, delete
 from sqlalchemy.orm import relationship, Session, DeclarativeBase, mapped_column, Mapped
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy import func
@@ -28,7 +28,7 @@ db = create_engine(DB_URL, echo=True)
 db_session = Session(db)
 
 HOST = os.environ.get("HOST", "https://track.moyu.ac.cn/detail/")
-REMOTE_URL = os.environ.get("REMOTE_URL")
+REMOTE_URL = os.environ.get("REMOTE_URL") or "http://127.0.0.1:8000"
 
 EXTENT_DAYS = 120
 
@@ -300,19 +300,24 @@ def detail_page(case_id):
     if request.method == "POST":
         act = request.form.get("act",None)
         if act == "delete":
-            db_session.delete(case)
-            db_session.commit()
-            flash("Completely deleted this case, See you.", category="success")
-            return redirect("/")
+            case_no = request.form.get("case_no",None)
+            if case_no == case.case_no:
+                db_session.delete(case)
+                db_session.commit()
+                flash("Completely deleted this case, See you.", category="success")
+                return redirect("/")
+            else:
+                flash("Case no not match", category="danger")
         if act == "renew":
             flash(f"Expire +{EXTENT_DAYS} days", category="success")
             case.renew()
         if act == "refresh" and case.passport_number is not None:
             result = query_ceac_state_safe(case.location,case.case_no,case.passport_number, case.surname)
             if isinstance(result,str):
-                flash(result, category="danger")
+                return jsonify({"status":"error", "error":result})
             else:
                 case.updateRecord(result)
+                return jsonify({"status":"success", "title": result[0], "message": result[3]})
         interview_date = request.form.get("interview_date",None)
         if interview_date:
             case.interview_date = datetime.datetime.strptime(interview_date,"%Y-%m-%d")
