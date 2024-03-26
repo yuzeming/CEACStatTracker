@@ -50,7 +50,7 @@ class NetworkStack(Stack):
             self,
             f"{PROJECT_NAME}-backend-certificate",
             # Domain name: SUNETID.infracourse.cloud
-            domain_name = "ceac.bettyyw.infracourse.cloud",
+            domain_name = "track.moyu.ac.cn",
             # Validation via DNS from the provisioned Hosted Zone (props.network_hosted_zone)
             validation=acm.CertificateValidation.from_dns(
                 props.network_hosted_zone
