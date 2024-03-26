@@ -27,7 +27,7 @@ if os.environ.get("POSTGRES_USER"):
 db = create_engine(DB_URL, echo=app.debug)
 db_session = Session(db)
 
-HOST = os.environ.get("HOST", "https://track.moyu.ac.cn/detail/")
+HOST = os.environ.get("HOST") or "https://track.moyu.ac.cn/detail/"
 REMOTE_URL = os.environ.get("REMOTE_URL") or "http://127.0.0.1:8000"
 
 EXTENT_DAYS = 120
@@ -159,37 +159,29 @@ class Case(Base):
         case.push_msg(first="签证状态的更新会推送到这里")
 
 
+Base.metadata.create_all(db, checkfirst=True)
+
+
 def divide_chunks(l, n):
     for i in range(0, len(l), n): 
         yield l[i:i + n]
 
 
-@app.route("/sync")
+@app.cli.command('sync', help="Sync all case status")
 def crontab_task():
-    if request.args.get("pwd") != os.environ.get("POSTGRES_PASSWORD"):
-        return "Need Pwd"
-    def generate():
-        yield "Start sync at "+ time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-        last_check_expire = datetime.datetime.now() - datetime.timedelta(hours=4)
-        stmt = Select(Case.location, Case.case_no, Case.passport_number, Case.surname).where(Case.expire_date >= datetime.datetime.today(), Case.last_check <= last_check_expire, Case.passport_number != None)
-        case_list = db_session.execute(stmt).all()
-        for req_data in divide_chunks(case_list, 10):
-            req_data = [tuple(i) for i in req_data]
-            yield "Querying" + str([case[1] for case in req_data])
-            result_dict = query_ceac_state_batch(req_data)
-            for case_no ,result in result_dict.items():
-                yield "Updating %s %s" % (case_no, result)
-                if isinstance(result, list):
-                    Case.updateRecord(case_no,result)
-    return generate()
-
-@app.route("/init_db")
-def init_db():
-    if request.form.get("pwd") == os.environ.get("POSTGRES_PASSWORD"):
-        Base.metadata.create_all(db)
-        return "OK"
-    else:
-        return "Need Pwd"
+    print("Start sync at", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    last_check_expire = datetime.datetime.now() - datetime.timedelta(hours=6)
+    stmt = Select(Case.location, Case.case_no, Case.passport_number, Case.surname)\
+        .where(Case.expire_date >= datetime.datetime.today(), Case.last_check <= last_check_expire, Case.passport_number != None)
+    case_list = db_session.execute(stmt).all()
+    for req_data in divide_chunks(case_list, 10):
+        req_data = [tuple(i) for i in req_data]
+        print("Querying", [case[1] for case in req_data])
+        result_dict = query_ceac_state_batch(req_data)
+        for case_no ,result in result_dict.items():
+            print("Updating" ,case_no, result)
+            if isinstance(result, list):
+                Case.updateRecord(case_no,result)
 
 @app.route("/import_case", methods=["GET","POST"])
 def import_case():

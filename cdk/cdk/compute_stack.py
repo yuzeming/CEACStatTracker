@@ -11,6 +11,8 @@ from aws_cdk import (
     aws_logs as logs,
     aws_ecs_patterns as ecs_patterns,
     aws_certificatemanager as acm,
+    aws_events as events,
+    aws_events_targets as targets,
 )
 from constructs import Construct
 import os, string
@@ -29,24 +31,24 @@ class ComputeStack(Stack):
             self, f"{PROJECT_NAME}-cluster", vpc=props.network_vpc
         )
 
-        # # Secret
-        # self.wechat_appid = secretsmanager.Secret(
-        #     self,
-        #     f"{PROJECT_NAME}-wechat-appid",
-        #     description="Wechat AppID",
-        # )
+        # Secret
+        self.wechat_appid = secretsmanager.Secret(
+            self,
+            f"{PROJECT_NAME}-wechat-appid",
+            description="Wechat AppID",
+        )
 
-        # self.wechat_secret = secretsmanager.Secret(
-        #     self,
-        #     f"{PROJECT_NAME}-wechat-secret",
-        #     description="Wechat Secret",
-        # )
+        self.wechat_secret = secretsmanager.Secret(
+            self,
+            f"{PROJECT_NAME}-wechat-secret",
+            description="Wechat Secret",
+        )
 
-        # self.wechat_token = secretsmanager.Secret(
-        #     self,
-        #     f"{PROJECT_NAME}-wechat-token",
-        #     description="Wechat Token",
-        # )
+        self.wechat_token = secretsmanager.Secret(
+            self,
+            f"{PROJECT_NAME}-wechat-token",
+            description="Wechat Token",
+        )
 
         # probe
         self.probe_lambda = lambda_.Function(
@@ -70,9 +72,10 @@ class ComputeStack(Stack):
         for key in DB_SECRET_MAPPING:
             val = DB_SECRET_MAPPING[key]
             secretts[key] = ecs.Secret.from_secrets_manager(props.aurora_db.secret, field=val)
-        # secretts["appId"] = ecs.Secret.from_secrets_manager(self.wechat_appid)
-        # secretts["appSecret"] = ecs.Secret.from_secrets_manager(self.wechat_secret)
-        # secretts["serverToken"] = ecs.Secret.from_secrets_manager(self.wechat_token)
+            
+        secretts["appID"] = ecs.Secret.from_secrets_manager(self.wechat_appid)
+        secretts["appSecret"] = ecs.Secret.from_secrets_manager(self.wechat_secret)
+        secretts["serverToken"] = ecs.Secret.from_secrets_manager(self.wechat_token)
 
 
         self.fargate_task_definition = ecs.FargateTaskDefinition(
@@ -121,4 +124,22 @@ class ComputeStack(Stack):
 
         fargate_service.service.connections.allow_to(
             props.aurora_db, ec2.Port.tcp(5432), "DB access"
+        )
+
+        sync_ruls = events.Rule(
+            self,
+            f"{PROJECT_NAME}-sync-schedule",
+            schedule=events.Schedule.rate(Duration.minutes(10)),
+        )
+        
+        sync_ruls.add_target(
+            targets.EcsTask(
+                cluster=cluster,
+                task_definition=self.fargate_task_definition,
+                container_overrides=[targets.ContainerOverride(
+                    container_name= f"{PROJECT_NAME}-app-sync",
+                    command= ["flask", "sync"],
+                )],
+                run_task_enabled=True,
+            )
         )
