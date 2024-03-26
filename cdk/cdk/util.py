@@ -13,7 +13,7 @@ from aws_cdk import (
 PROJECT_NAME = "CEACStatTracker"
 
 CDK_DEFAULT_ACCOUNT = "619809850642"
-
+CDK_DEFAULT_REGION = "us-west-2"
 
 # copy from homework
 DB_SPECIAL_CHARS_EXCLUDE: str = (

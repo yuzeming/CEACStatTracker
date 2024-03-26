@@ -22,7 +22,6 @@ class NetworkStack(Stack):
         self.vpc = ec2.Vpc(
             self,
             f"{PROJECT_NAME}-vpc",
-            region = "us-west-2",
             # Two availability zones: us-west-2a and us-west-2b
             availability_zones=["us-west-2a", "us-west-2b"],
             # The VPC’s IP address space should be 10.0.0.0/16

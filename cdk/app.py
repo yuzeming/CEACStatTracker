@@ -8,7 +8,7 @@ from cdk.compute_stack import ComputeStack
 from cdk.dns_stack import DnsStack
 from cdk.network_stack import NetworkStack
 from cdk.data_stack import DataStack
-from cdk.util import Props, PROJECT_NAME, CDK_DEFAULT_ACCOUNT
+from cdk.util import Props, PROJECT_NAME, CDK_DEFAULT_ACCOUNT, CDK_DEFAULT_REGION
 
 
 
@@ -33,7 +33,7 @@ app = cdk.App()
 
 
 props = Props()
-env = cdk.Environment(account=CDK_DEFAULT_ACCOUNT)
+env = cdk.Environment(account=CDK_DEFAULT_ACCOUNT, region=CDK_DEFAULT_REGION)
 
 dns_stack = DnsStack(app, f"{PROJECT_NAME}-dns-stack", env=env)
 props.network_hosted_zone = dns_stack.hosted_zone
