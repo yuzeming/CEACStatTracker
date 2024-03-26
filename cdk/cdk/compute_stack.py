@@ -140,6 +140,6 @@ class ComputeStack(Stack):
                     container_name= f"{PROJECT_NAME}-app-sync",
                     command= ["flask", "sync"],
                 )],
-                run_task_enabled=True,
+                enable_execute_command=True,
             )
         )
