@@ -50,6 +50,12 @@ class ComputeStack(Stack):
             description="Wechat Token",
         )
 
+        self.wxapi_url = secretsmanager.Secret(
+            self,
+            f"{PROJECT_NAME}-wxapi-url",
+            description="Wechat Api Url",
+        )
+
         # probe
         self.probe_lambda = lambda_.Function(
             self, f"{PROJECT_NAME}-probe-lambda",
@@ -76,7 +82,8 @@ class ComputeStack(Stack):
         secretts["appID"] = ecs.Secret.from_secrets_manager(self.wechat_appid)
         secretts["appSecret"] = ecs.Secret.from_secrets_manager(self.wechat_secret)
         secretts["serverToken"] = ecs.Secret.from_secrets_manager(self.wechat_token)
-
+        secretts["WXAPI_URL"] = ecs.Secret.from_secrets_manager(self.wxapi_url)
+        
 
         self.fargate_task_definition = ecs.FargateTaskDefinition(
             self,
@@ -96,7 +103,7 @@ class ComputeStack(Stack):
             container_name=f"{PROJECT_NAME}-app-container",
             logging=ecs.AwsLogDriver(
                 stream_prefix = f"{PROJECT_NAME}-fargate",
-                log_retention = logs.RetentionDays.ONE_WEEK,
+                log_retention = logs.RetentionDays.ONE_MONTH,
             ),
             image = ecs.ContainerImage.from_asset("../web"),
             port_mappings = [ecs.PortMapping(container_port=80)],
@@ -116,7 +123,7 @@ class ComputeStack(Stack):
             f"{PROJECT_NAME}-fargate-service",
             cluster=cluster,
             task_definition = self.fargate_task_definition,
-            domain_name = "ceac.moyu.ac.cn",
+            domain_name = "track.moyu.ac.cn",
             domain_zone = props.network_hosted_zone,
             certificate = props.network_backend_certificate,
             redirect_http = True,
