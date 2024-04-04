@@ -5,10 +5,7 @@ import os
 import yaml
 from hashlib import sha1
 
-appID = os.environ.get("appID")
-appSecret = os.environ.get("appSecret")
-serverToken = os.environ.get("serverToken")
-tempID = os.environ.get("tempID") or "ArFK9lrJ57rW4t4QQ6bqtdt8IFsLFZkLlPfrHI5hlCo"
+appID, appSecret, serverToken, tempID = os.environ.get("WX_CONFIG").split("|")
 
 # if we need a proxy in ip white list to get access token
 WXAPI_URL = os.environ.get("WXAPI_URL") or "https://api.weixin.qq.com/cgi-bin/stable_token"

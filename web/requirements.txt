@@ -2,5 +2,4 @@ Flask
 sqlalchemy
 PyYAML
 requests
-pyuwsgi
 psycopg2-binary

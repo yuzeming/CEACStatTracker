@@ -1,8 +1,4 @@
-FROM --platform=linux/amd64 python:3.12
-
-# still need curl for the ECS container health check!
-RUN apt update \
-    && apt install -y --no-install-recommends libmagic-dev curl
+FROM --platform=linux/amd64 python:3.12:slim
 
 WORKDIR /app
 COPY requirements.txt /app/requirements.txt
