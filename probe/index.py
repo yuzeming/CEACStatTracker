@@ -42,14 +42,22 @@ def pred(img_content):
     return pred
 
 ERR_CAPTCHA = "The code entered does not match the code displayed on the page."
-ERR_NOCASE = "Your search did not return any data."
-ERR_INVCODE = "Invalid Application ID or Case Number."
-ERR_DECRYPT = "Decrypt Error"
 
 URL = "https://ceac.state.gov/CEACStatTracker/Status.aspx?App=NIV"
 
 s = requests.Session()
-s.headers["User-Agent"]="Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/88.0"
+s.headers["User-Agent"]="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+s.headers["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
+s.headers["Accept-Encoding"] = "gzip, deflate, br, zstd"
+s.headers["Accept-Language"] = "en-US,en;q=0.9"
+s.headers["sec-ch-ua"]= '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"'
+s.headers["sec-ch-ua-mobile"] = "?0"
+s.headers["sec-ch-ua-platform"] = "Windows"
+s.headers["Sec-Fetch-Dest"] = "document"
+s.headers["Sec-Fetch-Mode"] = "navigate"
+s.headers["Sec-Fetch-Site"] = "none"
+s.headers["Sec-Fetch-User"] = "?1"
+s.headers["Upgrade-Insecure-Requests"] = "1"
 
 
 def read_hidden_input(soup: BeautifulSoup):
@@ -61,11 +69,11 @@ def read_hidden_input(soup: BeautifulSoup):
 
 def get_post_data(soup=None):
     if soup is None:
-        html = s.get(URL).text
+        html = s.get(URL, timeout=10).text
         soup = BeautifulSoup(html, features="html.parser")
     data = read_hidden_input(soup)
     CaptchaImageUrl = soup.find(id="c_status_ctl00_contentplaceholder1_defaultcaptcha_CaptchaImage").attrs["src"]
-    img_resp = s.get(urljoin(URL,CaptchaImageUrl))
+    img_resp = s.get(urljoin(URL,CaptchaImageUrl), timeout=10)
     data["ctl00$ContentPlaceHolder1$Captcha"]=pred(img_resp.content)
     data["ctl00_ToolkitScriptManager1_HiddenField"]=";;AjaxControlToolkit, Version=3.5.51116.0, Culture=neutral, PublicKeyToken=28f01b0e84b6d53e:en-US:2a06c7e2-728e-4b15-83d6-9b269fb7261e:de1feab2:f2c8e708:8613aea7:f9cec9bc:3202a5a2:a67c2700:720a52bf:589eaa30:ab09e3fe:87104b7c:be6fb298"
     data["ctl00$ContentPlaceHolder1$Visa_Application_Type"]="NIV"
@@ -84,7 +92,7 @@ def query_ceac_state(loc, case_no, passport_number, surname, data=None):
     data["ctl00$ContentPlaceHolder1$Passport_Number"] = passport_number
     data["ctl00$ContentPlaceHolder1$Surname"] = surname
 
-    resp = s.post(URL,data)
+    resp = s.post(URL,data, timeout=10)
     soup = BeautifulSoup(resp.text, features="html.parser")
 
     error_tag = soup.find(id="ctl00_ContentPlaceHolder1_ValidationSummary1")
@@ -123,9 +131,7 @@ def query_ceac_state_safe(loc, case_no, passport_number, surname, soup=None):
             result, soup = query_ceac_state(loc, case_no, passport_number, surname, data)
             logger.info("Info!,%s-%s: %s",loc, case_no, result)
         except Exception as e:
-            import traceback
-            traceback.print_exc()
-            logger.error("Error!,%s-%s: %s",loc, case_no, e)
+            logger.error("Error!,%s-%s:",loc, case_no, exc_info=e, stack_info=True) 
             return str(e), None
         if result != ERR_CAPTCHA:
             break
@@ -135,6 +141,7 @@ def query_ceac_state_safe(loc, case_no, passport_number, surname, soup=None):
 
 
 def main_handler(req):
+    logger.info("my ip is %s", s.get("http://httpbin.org/anything").text)
     ret = {}
     soup = None
     for loc, case_no, passport_number, surname in req:
@@ -146,66 +153,21 @@ def main_handler(req):
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 class RequestProxyHandler(BaseHTTPRequestHandler):
-    '''
-    This class is used to handle the request from API Gateway to unwarp the request
-    the request body is a json string, which contains json of the RAW request.
-
-    Example of warpped request:
-    POST /event-invoke HTTP/1.1
-    Host: 11.148.165.112:10217
-    User-Agent: Go-http-client/1.1
-    Content-Length: 495
-    Accept-Encoding: gzip
-    Content-Type: application/json
-    X-Forwarded-For: 11.163.0.86
-    X-Real-Ip: 11.163.0.86
-    X-Scf-Appid: 1252245989
-    X-Scf-Memory: 512
-    X-Scf-Name: ceac-serverless
-    X-Scf-Namespace: default
-    X-Scf-Region: na-siliconvalley
-    X-Scf-Request-Id: 3b21a413-6e6a-11ee-b2ba-52540008c7f7
-    X-Scf-Timeout: 300000
-    X-Scf-Uin: 100000090134
-    X-Scf-Version: $LATEST
-    Connection: close
-
-    Formated Body of warpped request:
-    {
-    "body": "",
-    "headers": {
-        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "accept-encoding": "gzip, deflate, br",
-        "accept-language": "en-US,en;q=0.7,zh;q=0.3",
-        "upgrade-insecure-requests": "1",
-        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/118.0"
-    },
-    "httpMethod": "GET",
-    "path": "/",
-    "queryString": {}
-    }
-    '''
-
     def do_POST(self):
-
         playload_raw = self.rfile.read(int(self.headers["Content-Length"]))
-        playload = json.loads(playload_raw)
-
-        if playload["httpMethod"] != "POST":
-            self.send_response(400)
-            self.send_header("Content-type", "text/html")
-            self.end_headers()
-            self.wfile.write(b"Only support POST!")
-            self.wfile.flush()
-            return
-        
-        event = json.loads(playload["body"])
+        event = json.loads(playload_raw)
         ret = main_handler(event)
-
         self.send_response(200)
         self.send_header("Content-type", "application/json")
         self.end_headers()
         self.wfile.write( ret.encode() )
+        self.wfile.flush()
+        
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
+        self.wfile.write(b"Hello, world")
         self.wfile.flush()
 
 

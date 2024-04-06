@@ -30,6 +30,10 @@ REMOTE_URL = os.environ.get("REMOTE_URL") or "http://127.0.0.1:8000"
 
 EXTENT_DAYS = 120
 
+ERR_NOCASE = "Your search did not return any data."
+ERR_INVCODE = "Invalid Application ID or Case Number."
+
+
 def parse_date(date_string):
     return datetime.datetime.strptime(date_string,"%d-%b-%Y").date()
 
@@ -51,7 +55,7 @@ def query_ceac_state_safe(loc, case_no, passport_number, surname):
 
 
 def query_ceac_state_batch(req_data):
-    req = requests.post(REMOTE_URL, json=req_data, timeout=180)
+    req = requests.post(REMOTE_URL, json=req_data, timeout=1800)
     ret = req.json()
     return ret
 
@@ -185,6 +189,11 @@ def crontab_task():
             print("Updating" ,case_no, result)
             if isinstance(result, list):
                 Case.updateRecord(case_no,result)
+            else: # Error message
+                if result == ERR_NOCASE: # expire case without interview
+                    stmt = delete(Case).where(Case.case_no == case_no)
+                    db_session.execute(stmt)
+                    db_session.commit()
 
 @app.route("/import_case", methods=["GET","POST"])
 def import_case():
@@ -344,7 +353,7 @@ def stat_result():
     labels = [(this_week - datetime.timedelta(days=i*7)).strftime("%m-%d") for i in range(52)]
     stat_json = { k: [stat_json[k].get(l,0) for l in labels] for k in stat_json.keys()}
     stat_json["_labels_"] = labels
-    stat_json["_update_time_"]=datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    stat_json["_update_time_"]=datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " UTC"
     response = make_response("var STAT_RESULT = " + json.dumps(stat_json) + ";")
     response.headers['Cache-Control'] = f'max-age=3600'
     response.headers['Content-Type'] = 'application/javascript'
