@@ -191,9 +191,11 @@ def crontab_task():
                 Case.updateRecord(case_no,result)
             else: # Error message
                 if result == ERR_NOCASE: # expire case without interview
-                    stmt = delete(Case).where(Case.case_no == case_no)
-                    db_session.execute(stmt)
-                    db_session.commit()
+                    stmt = Select(Case.id).where(Case.case_no == case_no)
+                    case = db_session.scalars(stmt).first()
+                    if case:
+                        db_session.delete(case)
+                        db_session.commit()
 
 @app.route("/import_case", methods=["GET","POST"])
 def import_case():
@@ -355,7 +357,7 @@ def stat_result():
     stat_json["_labels_"] = labels
     stat_json["_update_time_"]=datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " UTC"
     response = make_response("var STAT_RESULT = " + json.dumps(stat_json) + ";")
-    response.headers['Cache-Control'] = f'max-age=3600'
+    response.headers['Cache-Control'] = 'public, max-age=3600'
     response.headers['Content-Type'] = 'application/javascript'
     return response
 
