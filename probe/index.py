@@ -110,7 +110,7 @@ def query_ceac_state(loc, case_no, passport_number, surname, data=None):
 
 
 def query_ceac_state_safe(loc, case_no, passport_number, surname, soup=None):
-    if loc == "TEST":
+    if case_no == "TEST":
         return (
                 "DEBUG_INFO_"+str(datetime.datetime.now()) ,
                 datetime.datetime.strftime(datetime.date(2024,1,1),"%d-%b-%Y"),
@@ -137,8 +137,8 @@ def query_ceac_state_safe(loc, case_no, passport_number, surname, soup=None):
 def main_handler(req):
     ret = {}
     soup = None
-    for loc, case_no, info in req:
-        result, soup = query_ceac_state_safe(loc, case_no, info, soup)
+    for loc, case_no, passport_number, surname in req:
+        result, soup = query_ceac_state_safe(loc, case_no, passport_number, surname, soup)
         ret[case_no] = result
     return json.dumps(ret)
 

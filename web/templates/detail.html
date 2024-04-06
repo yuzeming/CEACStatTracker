@@ -82,6 +82,7 @@ $("#refresh_submit").click(async (event) => {
 <h2>Interview Date (Optional)</h2>
 <form method="POST">
   <p>Submit your interview date for progress survey.</p>
+  <input type="hidden" name="act" value="interview">
   <input type="date" name="interview_date" value="{{ case.interview_date.strftime('%Y-%m-%d') if case.interview_date else ''}}">
   <input type="submit" value="Submut" class="btn btn-primary">
 </form>
@@ -119,8 +120,8 @@ $("#refresh_submit").click(async (event) => {
 <h4>Delete my case</h4>
 <form method="POST">
 <input type="hidden" name="act" value="delete">
-<label for="case_no">Input Full Case Number to Confirm</label><br>
-<input type="input" name="case_no" value=""><br>
+<label for="case_no_delete">Input Full Case Number to Confirm</label><br>
+<input type="input" name="case_no" value="" id="case_no_delete"><br>
 <input type="submit" value="Delete my case" class="btn btn-danger" onclick="return confirm('Are you sure?')" >
 </form>
 

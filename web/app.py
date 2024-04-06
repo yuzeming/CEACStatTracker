@@ -20,7 +20,7 @@ from .wechat import wechat_get_qr_code_url, check_wx_signature, xmltodict, wecha
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY")
 
-DB_URL = os.environ.get("DB_URL") or "sqlite:///ceac.sqlite"
+DB_URL = os.environ.get("DB_URL") or "sqlite:////tmp/ceac.sqlite"
 
 db = create_engine(DB_URL)
 db_session = Session(db)
@@ -76,7 +76,7 @@ class Case(Base):
     case_no :Mapped[str]  = mapped_column(unique=True, index=True)
     location :Mapped[str] = mapped_column(String(3))
     created_date :Mapped[datetime.date] = mapped_column(default=datetime.datetime.now)
-    last_check :Mapped[datetime.datetime] = mapped_column()
+    last_check :Mapped[Optional[datetime.datetime]] = mapped_column()
     last_status : Mapped[Optional[str]] = mapped_column()
     passport_number :Mapped[Optional[str]] = mapped_column()
     surname :Mapped[Optional[str]] = mapped_column()
@@ -158,6 +158,9 @@ class Case(Base):
 
 @app.route("/init_db")
 def init_db():
+    pwd = request.args.get("pwd")
+    if pwd != os.environ.get("SECRET_KEY"):
+        return "Need Pwd"
     Base.metadata.create_all(db, checkfirst=True)
     return "OK"
 
@@ -306,12 +309,16 @@ def detail_page(case_id):
             if isinstance(result,str):
                 return jsonify({"status":"error", "error":result})
             else:
-                case.updateRecord(result)
+                Case.updateRecord(case.case_no, result)
                 return jsonify({"status":"success", "title": result[0], "message": result[3]})
-        interview_date = request.form.get("interview_date",None)
-        if interview_date:
-            case.interview_date = datetime.datetime.strptime(interview_date,"%Y-%m-%d")
-            case.interview_week = case.interview_date.isocalendar()[0]*100 + case.interview_date.isocalendar()[1]
+        if act=="interview":
+            interview_date = request.form.get("interview_date",None)
+            if interview_date:
+                case.interview_date = datetime.datetime.strptime(interview_date,"%Y-%m-%d")
+                case.interview_week = case.interview_date.isocalendar()[0]*100 + case.interview_date.isocalendar()[1]
+            else:
+                case.interview_date = None
+                case.interview_week = None
         db_session.commit()
     if case.passport_number is None and case.last_status != "Issued":
         flash("Please register again and complete the passport number and surname. You don't need to delete this old case.", category="warning")
@@ -365,24 +372,10 @@ def wechat_point():
     if EventKey:
         Case.bind(EventKey, req["FromUserName"])
 
-    if req["MsgType"] == "text":
-        case_list = [f"{case.marked_case_no}[{case.last_status}]" for case in Case.objects(push_channel=req["FromUserName"])]
-        case_list_str = "\n".join(case_list)
-        msg = f"""\
-<xml>
-  <ToUserName><![CDATA[{req["FromUserName"]}]]></ToUserName>
-  <FromUserName><![CDATA[{req["ToUserName"]}]]></FromUserName>
-  <CreateTime>{ int(time.time()) }</CreateTime>
-  <MsgType><![CDATA[text]]></MsgType>
-  <Content><![CDATA[绑定到这个微信号的推送：(共{len(case_list)}个)\n{ case_list_str }]]></Content>
-</xml>
-"""
-        if req["Content"] == "test":
-            wechat_push_msg(req["FromUserName"], 
-                            keyword1="测试推送", keyword2="测试推送", 
-                            remark="测试推送", first="测试推送", msg_url=HOST)
+    if req["MsgType"] == "text" and req["Content"] == "test":
+        wechat_push_msg(req["FromUserName"],  keyword1="测试推送1", keyword2="测试推送2", remark="测试推送3", first="测试推送4", msg_url=HOST)
 
     return msg
 
 if __name__ == '__main__':
-    app.run("0.0.0.0", 9000)
+    app.run()
