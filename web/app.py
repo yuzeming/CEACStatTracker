@@ -191,7 +191,7 @@ def crontab_task():
                 Case.updateRecord(case_no,result)
             else: # Error message
                 if result == ERR_NOCASE: # expire case without interview
-                    stmt = Select(Case.id).where(Case.case_no == case_no)
+                    stmt = Select(Case).where(Case.case_no == case_no)
                     case = db_session.scalars(stmt).first()
                     if case:
                         db_session.delete(case)
