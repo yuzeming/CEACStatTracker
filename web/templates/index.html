@@ -51,23 +51,12 @@
 
   {%include "stat.html" %}
   <h4>Buy me a coffee.</h4>
-  <div style="display: inline-block; background-color: #22AB39; padding: 30px;">
-    <div style="padding: 20px; background-color: white;">
-      <div id="qrcode-wechat" class="qrcode"></div>
-    </div>
-    <p style="width: 100%; color: white; text-align: center; margin-top: 10px; margin-bottom: 0;">By Wechat Pay</p>
-  </div>
-  <div style="display: inline-block; background-color: #1678FF; padding: 30px;">
-    <div style="padding: 20px; background-color: white;">
-    <div id="qrcode-alipay" class="qrcode"></div>
-    </div>
-    <p style="width: 100%; color: white; text-align: center; margin-top: 10px; margin-bottom: 0;">By AliPay</p>
-  </div>
+  <img src="/static/wxpay.jpg" alt="Wechat" width="300">
+  <img src="/static/alipay.jpg" alt="Alipay" width="300">
+  <p>Thank you for your support.</p>
   {% endblock %}
   {% block script %}
   <script type="text/javascript">
-    new QRCode(document.getElementById("qrcode-wechat"), "wxp://f2f0AaPgo9604etm4OqGeGUkKpdnvmRfXw3ZCZzBZi_2gNc");
-    new QRCode(document.getElementById("qrcode-alipay"), "https://qr.alipay.com/fkx14657go56sbmhu01swe9");
     $(document).ready(function() {
       $('.location-select').select2(
         {
