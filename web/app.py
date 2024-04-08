@@ -1,45 +1,48 @@
+from collections import defaultdict
 import datetime
 import json
 import os
-from typing import List
-from flask import Flask, request,flash, abort, make_response, jsonify
+import uuid
+from typing import List, Optional
+from flask import Flask, request, flash, abort, make_response, jsonify
 from flask.templating import render_template
-import mongoengine
-
-from mongoengine.queryset.base import CASCADE
 from werkzeug.utils import redirect
+from sqlalchemy import Integer, Select, String, create_engine, ForeignKey, Date, delete
+from sqlalchemy.orm import relationship, Session, DeclarativeBase, mapped_column, Mapped
+from sqlalchemy import func, Uuid, Text
+
 import time
 import requests
 from .location_list import LocationDict, LocationList
-from .wechat import get_qr_code_url, config as wx_config, check_wx_signature, xmltodict, wechat_msg_push
-
+from .wechat import wechat_get_qr_code_url, check_wx_signature, xmltodict, wechat_push_msg
 
 app = Flask(__name__)
-app.secret_key = "os.urandom(24)"
-HOST = "https://track.moyu.ac.cn/detail/"
+app.secret_key = os.environ.get("SECRET_KEY")
 
-db = mongoengine.connect("CEACStateTracker")
+DB_URL = os.environ.get("DB_URL") or "sqlite:////tmp/ceac.sqlite"
 
-public_key_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "public.pem")
-PUBLIC_KEY = open(public_key_path).read()
+db = create_engine(DB_URL)
+db_session = Session(db)
+
+HOST = os.environ.get("HOST") or "https://track.moyu.ac.cn/detail/"
+REMOTE_URL = os.environ.get("REMOTE_URL") or "http://127.0.0.1:8000"
 
 EXTENT_DAYS = 120
-STAT_RESULT_CACHE = None
-STAT_RESULT_CACHE_TIME = None
-STAT_RESULT_CACHE_MAX_AGE = 300
+
+ERR_NOCASE = "Your search did not return any data."
+ERR_INVCODE = "Invalid Application ID or Case Number."
+COS_URL = os.environ.get("COS_URL")
+PUSH_MSG = os.environ.get("PUSH_MSG","1") == "1"
 
 def parse_date(date_string):
     return datetime.datetime.strptime(date_string,"%d-%b-%Y").date()
 
-
-URL = os.environ.get("REMOTE_URL") or "http://127.0.0.1:9000"
-
-def query_ceac_state_safe(loc, case_no, info):
+def query_ceac_state_safe(loc, case_no, passport_number, surname):
     retry = 0
     req = None
     while retry < 5:
         try:
-            req = requests.post(URL, json=[[loc,case_no,info]], timeout=30)
+            req = requests.post(REMOTE_URL, json=[[loc, case_no, passport_number, surname]], timeout=30)
             if req.status_code == 200:
                 break
         except Exception as e:
@@ -52,231 +55,318 @@ def query_ceac_state_safe(loc, case_no, info):
 
 
 def query_ceac_state_batch(req_data):
-    req = requests.post(URL, json=req_data, timeout=180)
-    ret = req.json()
-    return ret
+    return requests.post(REMOTE_URL, json=req_data, timeout=1800).json()
 
+class Base(DeclarativeBase):
+    pass
 
-class Case(mongoengine.Document):
-    case_no = mongoengine.StringField(max_length=20, unique=True)
-    location = mongoengine.StringField(max_length=5, choice=LocationList)
-    last_update = mongoengine.ReferenceField("Record")
-    created_date = mongoengine.DateField(default=datetime.datetime.now)
-    last_seem = mongoengine.DateTimeField()
-    info = mongoengine.StringField(max_length=1000) # to store the encrypted personal info
+class Record(Base):
+    __tablename__ = "record"
+    id: Mapped[int] = mapped_column(
+        primary_key=True, index=True, autoincrement=True
+    )
+    case_id:Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("case.id"))
+    status_date :Mapped[datetime.date] = mapped_column(Date)
+    status :Mapped[str] = mapped_column(String(50))
+    message :Mapped[str] = mapped_column(Text)
 
-    push_channel = mongoengine.StringField(max_length=50)
-    qr_code_url = mongoengine.StringField(max_length=100)
-    qr_code_expire = mongoengine.DateTimeField(null=True)
-    expire_date = mongoengine.DateField(null=True)
-    interview_date = mongoengine.DateField(null=True)
+class Case(Base):
+    __tablename__ = "case"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid,
+        primary_key=True, index=True, default=uuid.uuid4
+    )
+    case_no :Mapped[str]  = mapped_column(String(20),unique=True, index=True)
+    location :Mapped[str] = mapped_column(String(5))
+    created_date :Mapped[datetime.date] = mapped_column(default=datetime.datetime.now)
+    last_check :Mapped[Optional[datetime.datetime]] = mapped_column()
+    last_status : Mapped[Optional[str]] = mapped_column(String(50))
+    passport_number :Mapped[Optional[str]] = mapped_column(String(20))
+    surname :Mapped[Optional[str]] = mapped_column(String(10))
 
-    def updateRecord(self, result, push_msg=True):
-        self.last_seem = datetime.datetime.now()
-        self.save()
+    push_channel :Mapped[Optional[str]] = mapped_column(String(100))
+    qr_code_url :Mapped[Optional[str]] = mapped_column(String(200))
+    qr_code_expire :Mapped[Optional[datetime.datetime]] = mapped_column()
+    expire_date :Mapped[Optional[datetime.date]] = mapped_column()
+    interview_date :Mapped[Optional[datetime.date]] = mapped_column()
+    interview_week :Mapped[Optional[int]] = mapped_column() # for stat group by week
 
+    record_list :Mapped[List["Record"]] = relationship(cascade="all, delete-orphan", order_by="desc(Record.status_date)", foreign_keys="Record.case_id")
+
+    @property
+    def marked_case_no(self):
+        return self.case_no[:3] + "****" + self.case_no[-3:]
+
+    @property
+    def last_update(self):
+        return self.record_list[0] if self.record_list else None
+
+    @staticmethod
+    def updateRecord(case_no, result, push_msg=True):
+        stmt = Select(Case).where(Case.case_no == case_no)
+        case_: Case = db_session.scalars(stmt).first()
         status, _, status_date, message = result
+        case_.last_check = datetime.datetime.now()
+        db_session.commit()
         status_date = parse_date(status_date)
-        if self.last_update != None and \
-            self.last_update.status_date == status_date and \
-            self.last_update.status == status and \
-            self.last_update.message == message:
+        if case_.last_update != None and \
+            case_.last_update.status_date == status_date and \
+            case_.last_update.status == status and \
+            case_.last_update.message == message:
             # no update needed
             return
-        new_record = Record(case=self, status_date=status_date, status=status, message=message)
-        new_record.save()
-        self.last_update = new_record
+        new_record = Record(case_id=case_.id, status_date=status_date, status=status, message=message)
+        db_session.add(new_record)
+        case_.last_status = status_date
+        db_session.commit()
+        db_session.refresh(new_record)
         if status == "Issued":
-            # mark as expired now
-            self.expire_date = None
-            # delete the encrypted personal info
-            self.info = None
-        self.save()
-        if self.push_channel and push_msg:
-            self.push_msg()
+            case_.expire_date = None
+            case_.passport_number = None
+            case_.surname = None
+        db_session.commit()
+        if case_.push_channel and push_msg:
+            case_.push_msg()
 
     def renew(self, days=EXTENT_DAYS):
-        if self.last_update and self.last_update.status == "Issued":
+        if self.last_status == "Issued":
             return
         self.expire_date = (datetime.datetime.today() + datetime.timedelta(days=days)).date()
-        self.save()
 
     def push_msg(self, first=None, remark=None):
         first = first or "你的签证状态有更新"
-        keyword1 = self.case_no
-        keyword2 = self.last_update.status
+        keyword1 = self.marked_case_no
+        keyword2 = self.last_status
         remark = self.last_update.message
-        wechat_msg_push(self.push_channel, msg_url=HOST+str(self.id),
+        wechat_push_msg(self.push_channel, msg_url=HOST+str(self.id),
             first=first, keyword1=keyword1, keyword2=keyword2, remark=remark)
 
     def get_qr_code_url(self):
         if self.qr_code_expire is None or datetime.datetime.now() > self.qr_code_expire:
-            self.qr_code_url = get_qr_code_url(str(self.id))
+            self.qr_code_url = wechat_get_qr_code_url(str(self.id))
             self.qr_code_expire = datetime.datetime.now() + datetime.timedelta(seconds=2592000)
-            self.save()
+            db_session.commit()
         return self.qr_code_url
-            
+        
     @staticmethod
     def bind(case_id, wx_userid):
-        case = Case.objects(id=case_id).first()
+        uuid_case_id = uuid.UUID(case_id)
+        stmt = Select(Case).where(Case.id == uuid_case_id)
+        case: Case = db_session.scalars(stmt).first()
         if not case:
             return 
         case.push_channel = wx_userid
-        case.save()
+        db_session.commit()
         case.push_msg(first="签证状态的更新会推送到这里")
 
-class Record(mongoengine.Document):
-    case = mongoengine.ReferenceField(Case, reverse_delete_rule=CASCADE)
-    status_date = mongoengine.DateField()
-    status = mongoengine.StringField()
-    message = mongoengine.StringField()
+@app.route("/init_db")
+def init_db():
+    pwd = request.args.get("pwd")
+    if pwd != os.environ.get("SECRET_KEY"):
+        return "Need Pwd"
+    Base.metadata.create_all(db, checkfirst=True)
+    return "OK"
+
 
 def divide_chunks(l, n):
     for i in range(0, len(l), n): 
         yield l[i:i + n]
 
 
-@app.cli.command('sync')
+@app.cli.command('sync', help="Sync all case status")
 def crontab_task():
-    import time, random
-    while True:
-        try:
-            print("Start sync at", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
-            last_seem_expire = datetime.datetime.now() - datetime.timedelta(hours=4)
-            case_list : List[Case] = Case.objects(expire_date__gte=datetime.datetime.today(), last_seem__lte=last_seem_expire, info__ne=None)
-            for chunk in divide_chunks(case_list, 10):
-                req_data = [(case.location, case.case_no, case.info) for case in chunk]
-                print("Querying", [case.case_no for case in chunk])
-                result_dict = query_ceac_state_batch(req_data)
-                for case in chunk:
-                    result = result_dict[case.case_no]
-                    print("Updating", case.case_no, result)
-                    if isinstance(result, list):
-                        case.updateRecord(result)
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-        time.sleep(60* random.randint(10,20))
+    print("Start sync at", time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()))
+    last_check_expire = datetime.datetime.now() - datetime.timedelta(hours=6)
+    stmt = Select(Case.location, Case.case_no, Case.passport_number, Case.surname)\
+        .where(Case.expire_date >= datetime.datetime.today(), Case.last_check <= last_check_expire, Case.passport_number != None)
+    case_list = db_session.execute(stmt).all()
+    for req_data in divide_chunks(case_list, 10):
+        req_data = [tuple(i) for i in req_data]
+        print("Querying", [case[1] for case in req_data])
+        result_dict = query_ceac_state_batch(req_data)
+        for case_no ,result in result_dict.items():
+            print("Updating" ,case_no, result)
+            if isinstance(result, list):
+                Case.updateRecord(case_no,result, PUSH_MSG)
+            else: # Error message
+                if result == ERR_NOCASE: # expire case without interview
+                    stmt = Select(Case).where(Case.case_no == case_no)
+                    case = db_session.scalars(stmt).first()
+                    if case:
+                        db_session.delete(case)
+                        db_session.commit()
+    if COS_URL:
+        status_code = stat_result()
+        print("Put stat.js to COS", COS_URL, status_code)
+    
+@app.route("/import_case", methods=["GET","POST"])
+def import_case():
+    if request.method == "GET":
+        return render_template("import_case.html")
+    if request.form.get("pwd") != os.environ.get("SECRET_KEY"):
+        return "Need Pwd"
+    if "file" not in request.files:
+        return "No file part"
+    file = request.files["file"]
+    case_list = json.load(file)
+    if type(case_list) == dict:
+        case_list = case_list.values()
+    def generate():
+        yield "<pre>"
+        yield "importing...\n"
+        for c in case_list:
+            case_no = c["case_no"]
+            stmt = Select(Case.id).where(Case.case_no == case_no)
+            if db_session.scalars(stmt).first():
+                yield f"{case_no}: Case_no exists\n"
+                db_session.rollback()
+                continue
+            case = Case(
+                case_no = case_no,
+                location = c["location"],
+                created_date = datetime.date.fromisoformat(c["created_date"]),
+                passport_number = c["passport_number"],
+                surname = c["surname"],
+                last_check = datetime.datetime.fromisoformat(c["last_check"]),
+                last_status = c["last_status"],
+                push_channel = c["push_channel"],
+            )
+            if c["interview_date"]:
+                case.interview_date = datetime.date.fromisoformat(c["interview_date"])
+                case.interview_week = case.interview_date.isocalendar()[0]*100 + case.interview_date.isocalendar()[1]
+            case.expire_date = datetime.date.today() + datetime.timedelta(days=120) if case.last_status != "Issued" else None
+            db_session.add(case)
+            db_session.commit()
+            db_session.refresh(case)
+            for r in c["record_list"]:
+                record = Record(
+                    case_id = case.id,
+                    status_date = datetime.date.fromisoformat(r["status_date"]),
+                    status = r["status"],
+                    message = r["message"]
+                )
+                db_session.add(record)
+            db_session.commit()
+            yield f"{case_no}: OK\n"
+            yield "</pre>"
+    return generate()
+    
+@app.route("/health")
+def health():
+    return "OK"
 
 @app.route("/", methods=["GET", "POST"])
 def index():
     case_no = ""
     if request.method == "POST":
-        case_no = request.form.get("case_no",None)
-        if case_no and Case.objects(case_no=case_no).count() == 1:
-            case = Case.objects(case_no=case_no).first()
-            return redirect("detail/"+str(case.id))
-        else:
-            flash("No such case, register first?", category="danger")
-    return render_template("index.html",case_no=case_no, LocationList=LocationList, PUBLIC_KEY=PUBLIC_KEY)
-
+        case_no = request.form.get("case_no","")
+        if case_no:
+            stmt = Select(Case).where(Case.case_no == case_no)
+            case = db_session.scalars(stmt).first()
+            if case:
+                return redirect("detail/"+str(case.id))
+            else:
+                flash("No such case, register first?", category="danger")
+    return render_template("index.html",case_no=case_no, LocationList=LocationList)
 
 @app.route("/register", methods=["POST"])
 def register():
     case_no = request.json.get("case_no",None)
     location = request.json.get("location",None)
-    info = request.json.get("info",None)
+    passport_number = request.json.get("passport_number",None)
+    surname = request.json.get("surname",None)
     if not case_no:
         return jsonify({"status":"error", "error":"Invaild case no"})
-    if Case.objects(case_no=case_no, info__ne= None).count() == 1:
-        case = Case.objects(case_no=case_no).first()
-        return jsonify({"status":"success", "case_id":str(case.id),})
     if not location or location not in LocationDict.keys() :
         return jsonify({"status":"error", "error":"Invaild location"})
-    result = query_ceac_state_safe(location, case_no, info)
+    result = query_ceac_state_safe(location, case_no, passport_number, surname)
     if isinstance(result,str):
         return jsonify({"status":"error", "error":result})
-    if Case.objects(case_no=case_no).count() == 1: # update the old case add info
-        case = Case.objects(case_no=case_no).first()
+    stmt = Select(Case).where(Case.case_no == case_no)
+    case = db_session.scalars(stmt).first()
+    if case: # update the old case
         case.location = location
-        case.info = info
+        case.passport_number = passport_number
+        case.surname = surname
     else:
-        case = Case(case_no=case_no,location=location, created_date=parse_date(result[1]), info=info)
-    case.save()
-    case.updateRecord(result)
+        case = Case(case_no=case_no,location=location, created_date=parse_date(result[1]), passport_number=passport_number, surname=surname)
+        db_session.add(case)
+    Case.updateRecord(case_no, result)
     case.renew()
+    db_session.commit()
     return jsonify({"status":"success", "case_id":str(case.id)})
 
 @app.route("/detail/<case_id>", methods=["GET", "POST"])
 def detail_page(case_id):
-    case = Case.objects(id=case_id).first() # type: Case
+    uuid_case_id = uuid.UUID(case_id)
+    stmt = Select(Case).where(Case.id == uuid_case_id)
+    case = db_session.scalars(stmt).first()
     if case is None:
         return abort(404)
     if request.method == "POST":
         act = request.form.get("act",None)
         if act == "delete":
-            case.delete()
-            flash("Completely deleted this case, See you.", category="success")
-            return redirect("/")
+            case_no = request.form.get("case_no",None)
+            if case_no == case.case_no:
+                db_session.delete(case)
+                db_session.commit()
+                flash("Completely deleted this case, See you.", category="success")
+                return redirect("/")
+            else:
+                flash("Case no not match", category="danger")
         if act == "renew":
             flash(f"Expire +{EXTENT_DAYS} days", category="success")
             case.renew()
-        if act == "refresh" and case.info is not None:
-            result = query_ceac_state_safe(case.location,case.case_no,case.info)
+        if act == "refresh" and case.passport_number is not None:
+            result = query_ceac_state_safe(case.location,case.case_no,case.passport_number, case.surname)
             if isinstance(result,str):
-                flash(result, category="danger")
+                return jsonify({"status":"error", "error":result})
             else:
-                case.updateRecord(result)
-        interview_date = request.form.get("interview_date",None)
-        if interview_date:
-            case.interview_date = datetime.datetime.strptime(interview_date,"%Y-%m-%d")
-        case.save()
-    record_list = Record.objects(case=case).order_by('-status_date')
-    if case.info is None and case.last_update.status != "Issued":
+                Case.updateRecord(case.case_no, result)
+                return jsonify({"status":"success", "title": result[0], "message": result[3]})
+        if act=="interview":
+            interview_date = request.form.get("interview_date",None)
+            if interview_date:
+                case.interview_date = datetime.datetime.strptime(interview_date,"%Y-%m-%d")
+                case.interview_week = case.interview_date.isocalendar()[0]*100 + case.interview_date.isocalendar()[1]
+            else:
+                case.interview_date = None
+                case.interview_week = None
+        db_session.commit()
+    if case.passport_number is None and case.last_status != "Issued":
         flash("Please register again and complete the passport number and surname. You don't need to delete this old case.", category="warning")
-    return render_template("detail.html", case=case, record_list=record_list, location_str=LocationDict[case.location])
+    return render_template("detail.html", case=case, record_list=case.record_list, location_str=LocationDict[case.location])
 
-@app.route("/stat.js")
+
+#@app.route("/stat.js")
 def stat_result():
-    global STAT_RESULT_CACHE, STAT_RESULT_CACHE_TIME
-    if STAT_RESULT_CACHE is None or datetime.datetime.now() - STAT_RESULT_CACHE_TIME > datetime.timedelta(seconds=STAT_RESULT_CACHE_MAX_AGE):
-        this_week = datetime.datetime.today() - datetime.timedelta(days=datetime.datetime.today().weekday())
-        date_range = this_week - datetime.timedelta(days=52*7)
-        pipeline = [
-            {   "$match": { "interview_date":{"$gte": date_range} } },
-            {   "$lookup": { 
-                    "from": "record",
-                    "localField":"last_update",
-                    "foreignField":"_id",
-                    "as":"last_update"
-                }
-            },{
-                "$group": {
-                    "_id":{ 
-                        "date": { "$dateToString": { "format": "%Y-%m-%d", "date": "$interview_date"} },
-                        "status":"$last_update.status"
-                    },
-                    "count": {"$sum": 1}
-                }
-            }
-        ]
-        result = Case.objects().aggregate(pipeline)
-        tmp = {}
-        for line in result:
-            date = datetime.datetime.strptime(line["_id"]["date"],"%Y-%m-%d")
-            date -= datetime.timedelta(days=date.weekday())
-            date = date.strftime("%m-%d")
-            status = line["_id"]["status"][0]
-            count = int(line["count"])
-            if status not in tmp:
-                tmp[status] = {}
-            if date not in tmp[status]:
-                tmp[status][date] = 0
-            tmp[status][date] += count
+    this_week = datetime.datetime.now() - datetime.timedelta(days=datetime.datetime.now().isoweekday()-1)
+    date_range = datetime.datetime.now() - datetime.timedelta(weeks=52)
+    week_range = date_range.isocalendar()[0]*100 + date_range.isocalendar()[1]
+    stmt = Select(func.count(),Case.last_status, Case.interview_week) \
+        .group_by(Case.last_status, Case.interview_week) \
+        .filter(Case.interview_week != None) \
+        .filter(Case.interview_week >= week_range)
+    result = db_session.execute(stmt).all()
+    stat_json = defaultdict(dict)
+    labels = set()
+    for count, status, week in result:
+        week_str = datetime.date.fromisocalendar(week//100, week%100, 1).strftime("%m-%d")
+        stat_json[status][week_str] = count
+        labels.add(week_str)
+    labels = [(this_week - datetime.timedelta(days=i*7)).strftime("%m-%d") for i in range(52)]
+    stat_json = { k: [stat_json[k].get(l,0) for l in labels] for k in stat_json.keys()}
+    stat_json["_labels_"] = labels
+    stat_json["_update_time_"]=datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " UTC"
+    js_content = "var STAT_RESULT = " + json.dumps(stat_json) + ";"
+    
+    # Put the js content into Tencent COS
+    req = requests.put(COS_URL, data=js_content)
+    return req.status_code
         
-        labels = [(this_week - datetime.timedelta(days=i*7)).strftime("%m-%d") for i in range(52)]
-        STAT_RESULT_CACHE_TIME = datetime.datetime.now()
-        result = {
-            "_labels_":labels,
-            "_update_time_":  STAT_RESULT_CACHE_TIME.strftime("%Y-%m-%d %H:%M")
-        }
-        for s in tmp:
-            result[s] =[tmp[s].get(i,0) for i in labels]
-        STAT_RESULT_CACHE = "STAT_RESULT = " + json.dumps(result) + ";"
-    response = make_response(STAT_RESULT_CACHE)
-    response.headers['Cache-Control'] = f'max-age={STAT_RESULT_CACHE_MAX_AGE}'
-    response.headers['Content-Type'] = 'application/javascript'
-    return response
+    # response = make_response("var STAT_RESULT = " + json.dumps(stat_json) + ";")
+    # response.headers['Cache-Control'] = 'public, max-age=3600'
+    # response.headers['Content-Type'] = 'application/javascript'
+    # return response
 
 
 @app.route('/endpoint', methods=["GET","POST"])
@@ -284,8 +374,7 @@ def wechat_point():
     if not check_wx_signature(
         request.args.get("signature"), 
         request.args.get("timestamp"), 
-        request.args.get("nonce"),
-        wx_config["serverToken"]):
+        request.args.get("nonce")):
         return abort(500)
     if request.method == "GET":
         return request.args.get("echostr")
@@ -301,22 +390,8 @@ def wechat_point():
     if EventKey:
         Case.bind(EventKey, req["FromUserName"])
 
-    if req["MsgType"] == "text":
-        case_list = [case.case_no for case in Case.objects(push_channel=req["FromUserName"])]
-        case_list_str = "\n".join(case_list)
-        msg = f"""\
-<xml>
-  <ToUserName><![CDATA[{req["FromUserName"]}]]></ToUserName>
-  <FromUserName><![CDATA[{req["ToUserName"]}]]></FromUserName>
-  <CreateTime>{ int(time.time()) }</CreateTime>
-  <MsgType><![CDATA[text]]></MsgType>
-  <Content><![CDATA[绑定到这个微信号的推送：(共{len(case_list)}个)\n){ case_list_str }]]></Content>
-</xml>
-"""
-        if req["Content"] == "test":
-            wechat_msg_push(req["FromUserName"], 
-                            keyword1="测试推送", keyword2="测试推送", 
-                            remark="测试推送", first="测试推送", msg_url="https://track.moyu.ac.cn/")
+    if req["MsgType"] == "text" and req["Content"] == "test":
+        wechat_push_msg(req["FromUserName"],  keyword1="测试推送1", keyword2="测试推送2", remark="测试推送3", first="测试推送4", msg_url=HOST)
 
     return msg
 

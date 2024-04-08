@@ -1,5 +1,5 @@
 Flask
-mongoengine
+sqlalchemy
 PyYAML
 requests
-pyuwsgi
+PyMySQL

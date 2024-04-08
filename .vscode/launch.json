@@ -1,21 +1,26 @@
 {
     "configurations": [
         {
-            "name": "Python: CEAC-Serverless",
-            "type": "python",
+            "name": "Python: debug probe",
+            "type": "debugpy",
             "request": "launch",
-            "program": "CEAC-Serverless/index.py",
+            "program": "web/debug_probe.py",
             "console": "integratedTerminal",
-            "justMyCode": true
+            "justMyCode": true,
+            "env": {
+                "PRIVATE_KEY": "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA3c1Rr0BmNNTmJeWuaON1s0zli6exBORVDf0V9q5ZHgNUXqHm\nJe26mh6T+X4PxXpMADZ4+wbfm+HcJ7Gg7s6HhYdfQwu+8/zc+FbNDe02Ir0I3m8y\n7XzloMXZqNTwug2W/VpxCw2Qujr0ONjTsYViRBuTXZciRnTRPBYNWFtpedhHh1c7\nXpZ5ELCxNxXLx2gEhi+BDUoQPps6TBs79MvqlIWUfjlIxYHhQMWwOZwC+Nn7A4Ue\n4Sl0pmfgHGaG7xO3y1Ic8ma5KgCwLbT1oBjrhEsQP/XojSpXblEFBFCqeT/z35PT\n6/77NdWbN0JWkBaRJCGsLXDU6HXd6f5CS9i6bQIDAQABAoIBAC3WiNMXFAhHF2kt\nlmXG3EQ52BaMiWDhb1J8w1U/ots5BO6pts6P2siPGTWuf8PoClzg5Q+70+p7OuxZ\nIVE5DXjjCSTqAISb9W69QZNnOpDjUDnn8TZzYWFggiMKHtXUiSfC0Snfm9Fg7afx\n544AatZ4fHQTD9pPug4Y4JkqCxpK3b94qyJpanxW8EOsLhgk+h3OYCnPdFti/4yv\nOrayqxLRu9N8ucKQ73EjGca8IFzdrcKHBFUrORY7La+AYAZCr0bVwCExavSt97vA\n5InHTRI6F/oRYRpS7bNZBbJ0GWurGVVRvAAjOgGQGqxSnVH36CfTJwJ4QKBnWwDK\nmHfVgQECgYEA7vEMSeFq3M1LHLWvFPth1zf9rH7t7NQ1Ad4/ay2PNqaBtOPkJkX2\n68oxVgslMhdHZEsgGuChwNk8cy1kpUIa0TLb/sIoJ9msE0/hD+wiFqbVFTz+cvdF\ns+CJGDLVp1sO/SKudBUzUZiwuPH6WwWYmoVgxDdUCA5/tDg70Wh/7OUCgYEA7aMG\nPoxbTOuEMFrCKcllPvHLpm7qT6qtFTP3zQmEV+PLCzRBOhm6GULRPDUBfk0e3ODU\nLVrPtjF+Nw1JQxTNjL9g980FVN2LRIbeoLNJahTR4ARz/0TElOtA37+aisIrbPoU\nEtZbRblhcHn0LkLe2XEGfDFmrwzrg4LHQYNdxukCgYAH5aOYVYDop0hSPJb6xIwp\nRsp1hwRqDWFrHGNQMYNINRyYU+fYc/uDM32J8HhcPXS4ldsLyFzQON3MmLV42MR2\nIY4vz07wcjtDsCIqGo3N3dmxCAEI369IEKW3TQbOry3BpAHMCF9X1QoSMr0pgPfY\nM4xNL97xHTmPRUSE2UVRGQKBgQDLKhuGkjzkcF5dcNqbGyHCRLrVmfIdFlBP1lQ/\nKanJ8mh/NbemUqR2QFfeX3rdXlXKhTUhaYg3veyoaGWAQmLRuDTQ5qluOtJ8Tco8\nHcvgM9iS63u4fDSNFOwr3wXjJ8o0q0FKMZVq8OjLXphSjL01rZnbx+iANE2N69sq\nuYMNMQKBgCwy22vhdEwTF33Fmc5Y31+FM7G2TC/fOif27raoaWlIgkGue2imiLC6\n38/w9sGVrP4dsmb1atpZgX1O9uGAeSZNdStUhQ6B1wF+dKTcmOrjo6YPKKLn6azd\nKPeFRwxNvvzJrwJp2Vwuzigf3p92zU5uJwQy36vue38lZWg0jg9t\n-----END RSA PRIVATE KEY-----"
+            }
         },
         {
             "name": "Python: Flask",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "module": "flask",
             "env": {
                 "FLASK_APP": "web/app.py",
-                "FLASK_DEBUG": "1"
+                "FLASK_DEBUG": "1",
+                "PUBLIC_KEY": "-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA3c1Rr0BmNNTmJeWuaON1\ns0zli6exBORVDf0V9q5ZHgNUXqHmJe26mh6T+X4PxXpMADZ4+wbfm+HcJ7Gg7s6H\nhYdfQwu+8/zc+FbNDe02Ir0I3m8y7XzloMXZqNTwug2W/VpxCw2Qujr0ONjTsYVi\nRBuTXZciRnTRPBYNWFtpedhHh1c7XpZ5ELCxNxXLx2gEhi+BDUoQPps6TBs79Mvq\nlIWUfjlIxYHhQMWwOZwC+Nn7A4Ue4Sl0pmfgHGaG7xO3y1Ic8ma5KgCwLbT1oBjr\nhEsQP/XojSpXblEFBFCqeT/z35PT6/77NdWbN0JWkBaRJCGsLXDU6HXd6f5CS9i6\nbQIDAQAB\n-----END PUBLIC KEY-----",
+                "REMOTE_URL": "http://localhost:8000",
             },
             "args": [
                 "run",

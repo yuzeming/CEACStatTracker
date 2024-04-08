@@ -1,0 +1,6 @@
+beautifulsoup4
+numpy
+onnxruntime
+Pillow
+requests
+

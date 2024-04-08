@@ -1,26 +1,72 @@
 {% extends "base.html" %}
 {% block head %}
 <h1 class="project-name">{{ case.last_update.status }}</h1>
-<h2 class="project-tagline"><b>Case Last Updated: </b>{{ case.last_update.status_date }}<br><b>Case No: </b> {{ case.case_no }}</p></h2>
+<h2 class="project-tagline"><b>Case Last Updated: </b>{{ case.last_update.status_date }}<br><b>Case No: </b> {{ case.marked_case_no }}</p></h2>
 {% endblock %}
 {% block content %}
 <h2>Case Info</h2>
-<p><b>Case No: </b> {{ case.case_no }}<br>
+<p><b>Case No: </b> {{ case.marked_case_no }}<br>
 <b>Location: </b>{{location_str}} ({{ case.location }})<br>
 <b>Case Created: </b>{{ case.created_date }}<br>
-<b>Case Last Seen: </b>{{ case.last_seem.strftime('%Y-%m-%d %X') }}<br>
+<b>Case Last Check: </b>{{ case.last_check.strftime('%Y-%m-%d %X') }} (UTC)<br>
 
-{% if case.info %}
-<i class="bi bi-database-lock"></i> We store your Passport Number and Surname encrypted in database.
+{% if case.surname %}
+<i class="bi bi-database-lock"></i> We store your Passport Number and Surname in database.
 {% else %}
 <i class="bi bi-database-check"></i> Your Passport Number and Surname has been removed from database.
 {% endif %}
 </p>
-{% if case.last_update.status != "Issued" and case.info %}
-<form method="POST">
-    <input type="hidden" name="act" value="refresh">
-    <input type="submit" value="Refresh now" class="btn btn-primary">
-</form>
+{% if case.last_update.status != "Issued" and case.surname %}
+<button class="btn btn-primary" type="button" id="refresh_submit">
+  <span class="spinner-border spinner-border-sm" aria-hidden="true" hidden id="refresh_spinner"></span>
+  <span role="status">Refresh now</span>
+</button>
+
+<!-- Modal -->
+<div class="modal fade" id="case_refresh" tabindex="-1" aria-labelledby="case_refresh" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h1 class="modal-title fs-5" id="refresh_title"></h1>
+      </div>
+      <div class="modal-body" id="refresh_msg">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type="text/javascript">
+  async function refresh_now(event) {
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", window.location.href, true);
+  xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+  xhr.onreadystatechange = () => {
+    if (xhr.readyState === XMLHttpRequest.DONE && xhr.status === 200) {
+    let data = JSON.parse(xhr.responseText);
+    if (data.status == "success") {
+      // show data here
+      $("#refresh_title").text(data.title);
+      $("#refresh_msg").text(data.message);
+      $("#case_refresh").modal('show');
+    } else {
+      appendAlert(data.error,"danger");
+    }
+    $("#refresh_submit").removeClass('disabled');
+    $("#refresh_spinner").attr("hidden", "hidden");
+    }};
+  xhr.send("act=refresh");
+}
+
+$("#refresh_submit").click(async (event) => {
+  event.preventDefault();
+  $("#refresh_submit").addClass('disabled');
+  $("#refresh_spinner").removeAttr("hidden");
+  await refresh_now(event)
+});
+</script>
 {% endif %}
 
 {% if case.expire_date %}
@@ -36,6 +82,7 @@
 <h2>Interview Date (Optional)</h2>
 <form method="POST">
   <p>Submit your interview date for progress survey.</p>
+  <input type="hidden" name="act" value="interview">
   <input type="date" name="interview_date" value="{{ case.interview_date.strftime('%Y-%m-%d') if case.interview_date else ''}}">
   <input type="submit" value="Submut" class="btn btn-primary">
 </form>
@@ -73,6 +120,8 @@
 <h4>Delete my case</h4>
 <form method="POST">
 <input type="hidden" name="act" value="delete">
+<label for="case_no_delete">Input Full Case Number to Confirm</label><br>
+<input type="input" name="case_no" value="" id="case_no_delete"><br>
 <input type="submit" value="Delete my case" class="btn btn-danger" onclick="return confirm('Are you sure?')" >
 </form>
 

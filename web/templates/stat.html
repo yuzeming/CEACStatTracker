@@ -1,5 +1,5 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
-<script src="/stat.js"></script>
+<script src="/static/stat.js"></script>
 <div class="chart">
   <canvas id="myChart" ></canvas>
 </div>
@@ -11,17 +11,21 @@
         data: {
           labels: STAT_RESULT["_labels_"],
           datasets: [{
-            label: "Issued", 
+            label: "Issued",
             data: STAT_RESULT["Issued"],
             backgroundColor:'#2ca02c' ,
           },{
-            label: "Administrative Processing", 
+            label: "Approved",
+            data: STAT_RESULT["Approved"],
+            backgroundColor:  '#bcbd22',
+          },{
+            label: "Administrative Processing",
             data: STAT_RESULT["Administrative Processing"],
             backgroundColor:  '#ff7f0e',
           },{
-            label: "Refused", 
-          data: STAT_RESULT["Refused"],
-          backgroundColor: '#1f77b4',
+            label: "Refused",
+            data: STAT_RESULT["Refused"],
+            backgroundColor: '#1f77b4',
           }]
         },
 
