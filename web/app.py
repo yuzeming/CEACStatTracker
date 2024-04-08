@@ -116,7 +116,7 @@ class Case(Base):
             return
         new_record = Record(case_id=case_.id, status_date=status_date, status=status, message=message)
         db_session.add(new_record)
-        case_.last_status = status_date
+        case_.last_status = status
         db_session.commit()
         db_session.refresh(new_record)
         if status == "Issued":
