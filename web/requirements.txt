@@ -2,4 +2,4 @@ Flask
 sqlalchemy
 PyYAML
 requests
-psycopg2-binary
+PyMySQL

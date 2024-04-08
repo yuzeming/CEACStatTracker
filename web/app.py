@@ -9,8 +9,7 @@ from flask.templating import render_template
 from werkzeug.utils import redirect
 from sqlalchemy import Integer, Select, String, create_engine, ForeignKey, Date, delete
 from sqlalchemy.orm import relationship, Session, DeclarativeBase, mapped_column, Mapped
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy import func
+from sqlalchemy import func, Uuid, Text
 
 import time
 import requests
@@ -32,7 +31,8 @@ EXTENT_DAYS = 120
 
 ERR_NOCASE = "Your search did not return any data."
 ERR_INVCODE = "Invalid Application ID or Case Number."
-
+COS_URL = os.environ.get("COS_URL")
+PUSH_MSG = os.environ.get("PUSH_MSG","1") == "1"
 
 def parse_date(date_string):
     return datetime.datetime.strptime(date_string,"%d-%b-%Y").date()
@@ -55,38 +55,36 @@ def query_ceac_state_safe(loc, case_no, passport_number, surname):
 
 
 def query_ceac_state_batch(req_data):
-    req = requests.post(REMOTE_URL, json=req_data, timeout=1800)
-    ret = req.json()
-    return ret
+    return requests.post(REMOTE_URL, json=req_data, timeout=1800).json()
 
 class Base(DeclarativeBase):
     pass
 
 class Record(Base):
     __tablename__ = "record"
-    id: Mapped[uuid.UUID] = mapped_column(
-        primary_key=True, index=True, default=uuid.uuid4
+    id: Mapped[int] = mapped_column(
+        primary_key=True, index=True, autoincrement=True
     )
-    case_id:Mapped[uuid.UUID] = mapped_column(UUID, ForeignKey("case.id"))
+    case_id:Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("case.id"))
     status_date :Mapped[datetime.date] = mapped_column(Date)
-    status :Mapped[str] = mapped_column()
-    message :Mapped[str] = mapped_column()
+    status :Mapped[str] = mapped_column(String(50))
+    message :Mapped[str] = mapped_column(Text)
 
 class Case(Base):
     __tablename__ = "case"
-    id: Mapped[uuid.UUID] = mapped_column(
+    id: Mapped[uuid.UUID] = mapped_column(Uuid,
         primary_key=True, index=True, default=uuid.uuid4
     )
-    case_no :Mapped[str]  = mapped_column(unique=True, index=True)
-    location :Mapped[str] = mapped_column(String(3))
+    case_no :Mapped[str]  = mapped_column(String(20),unique=True, index=True)
+    location :Mapped[str] = mapped_column(String(5))
     created_date :Mapped[datetime.date] = mapped_column(default=datetime.datetime.now)
     last_check :Mapped[Optional[datetime.datetime]] = mapped_column()
-    last_status : Mapped[Optional[str]] = mapped_column()
-    passport_number :Mapped[Optional[str]] = mapped_column()
-    surname :Mapped[Optional[str]] = mapped_column()
+    last_status : Mapped[Optional[str]] = mapped_column(String(50))
+    passport_number :Mapped[Optional[str]] = mapped_column(String(20))
+    surname :Mapped[Optional[str]] = mapped_column(String(10))
 
-    push_channel :Mapped[Optional[str]] = mapped_column()
-    qr_code_url :Mapped[Optional[str]] = mapped_column()
+    push_channel :Mapped[Optional[str]] = mapped_column(String(100))
+    qr_code_url :Mapped[Optional[str]] = mapped_column(String(200))
     qr_code_expire :Mapped[Optional[datetime.datetime]] = mapped_column()
     expire_date :Mapped[Optional[datetime.date]] = mapped_column()
     interview_date :Mapped[Optional[datetime.date]] = mapped_column()
@@ -188,7 +186,7 @@ def crontab_task():
         for case_no ,result in result_dict.items():
             print("Updating" ,case_no, result)
             if isinstance(result, list):
-                Case.updateRecord(case_no,result)
+                Case.updateRecord(case_no,result, PUSH_MSG)
             else: # Error message
                 if result == ERR_NOCASE: # expire case without interview
                     stmt = Select(Case).where(Case.case_no == case_no)
@@ -196,7 +194,10 @@ def crontab_task():
                     if case:
                         db_session.delete(case)
                         db_session.commit()
-
+    if COS_URL:
+        status_code = stat_result()
+        print("Put stat.js to COS", COS_URL, status_code)
+    
 @app.route("/import_case", methods=["GET","POST"])
 def import_case():
     if request.method == "GET":
@@ -336,7 +337,7 @@ def detail_page(case_id):
     return render_template("detail.html", case=case, record_list=case.record_list, location_str=LocationDict[case.location])
 
 
-@app.route("/stat.js")
+#@app.route("/stat.js")
 def stat_result():
     this_week = datetime.datetime.now() - datetime.timedelta(days=datetime.datetime.now().isoweekday()-1)
     date_range = datetime.datetime.now() - datetime.timedelta(weeks=52)
@@ -356,10 +357,16 @@ def stat_result():
     stat_json = { k: [stat_json[k].get(l,0) for l in labels] for k in stat_json.keys()}
     stat_json["_labels_"] = labels
     stat_json["_update_time_"]=datetime.datetime.now().strftime("%Y-%m-%d %H:%M") + " UTC"
-    response = make_response("var STAT_RESULT = " + json.dumps(stat_json) + ";")
-    response.headers['Cache-Control'] = 'public, max-age=3600'
-    response.headers['Content-Type'] = 'application/javascript'
-    return response
+    js_content = "var STAT_RESULT = " + json.dumps(stat_json) + ";"
+    
+    # Put the js content into Tencent COS
+    req = requests.put(COS_URL, data=js_content)
+    return req.status_code
+        
+    # response = make_response("var STAT_RESULT = " + json.dumps(stat_json) + ";")
+    # response.headers['Cache-Control'] = 'public, max-age=3600'
+    # response.headers['Content-Type'] = 'application/javascript'
+    # return response
 
 
 @app.route('/endpoint', methods=["GET","POST"])
